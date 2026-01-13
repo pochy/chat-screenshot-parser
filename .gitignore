@@ -1,0 +1,114 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+ENV/
+env/
+.venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+# PaddleOCR models (auto-downloaded)
+*.tar
+*.tar.gz
+*.pdmodel
+*.pdiparams
+*.pdiparams.info
+PaddleOCR/
+inference/
+
+# CUDA/GPU related files (large)
+*.deb
+*.deb.*
+*.run
+cuda-repo-*
+nvidia-*
+*.rpm
+
+# OCR Cache files
+.paddleocr/
+.cache/
+
+# Output files
+output/
+*.jsonl
+checkpoint.json
+raw_messages.jsonl
+deduped.jsonl
+conversations.jsonl
+
+# Analysis and processing results
+processed/
+results/
+stats/
+reports/
+
+# Logs
+*.log
+log_output/
+logs/
+
+# Model artifacts and weights
+models/
+weights/
+checkpoints/
+*.pt
+*.pth
+*.onnx
+*.trt
+*.engine
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Screenshots (input data - too large for git)
+screenshots/
+!screenshots/.gitkeep
+images/
+data/
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.orig
+
+# Configuration backups
+config.yaml.bak
+config.*.yaml
+
+# Test files
+test_*
+*_test.py

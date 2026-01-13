@@ -1,0 +1,17 @@
+# WeChat Extractor Dependencies
+# Python 3.9+ required
+
+# OCR
+paddlepaddle-gpu>=2.5.0  # GPU版 (CUDAが必要)
+# paddlepaddle>=2.5.0    # CPU版を使う場合はこちらをコメント解除
+paddleocr>=2.7.0
+
+# 画像処理
+opencv-python>=4.8.0
+numpy>=1.24.0
+
+# 進捗表示
+tqdm>=4.65.0
+
+# オプション: 高速化
+# onnxruntime-gpu>=1.15.0  # ONNX推論エンジン（さらに高速化したい場合）

@@ -1,0 +1,26 @@
+# WeChat Extractor 設定ファイル
+
+# 話者設定
+speakers:
+  right:
+    name: "user_a"
+    lang: "ja"
+  left:
+    name: "user_b"
+    lang: "zh"
+
+# OCR設定
+ocr:
+  use_gpu: true
+  lang: "ch"  # ch = 中国語（日本語も認識可能）
+  det_db_thresh: 0.3
+  det_db_box_thresh: 0.5
+
+# 出力設定
+output:
+  format: "jsonl"
+  include_confidence: true
+  include_source_file: true
+
+# タイムゾーン
+timezone: "+09:00"  # JST

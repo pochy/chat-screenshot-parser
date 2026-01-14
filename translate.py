@@ -20,20 +20,41 @@ from typing import Optional
 from tqdm import tqdm
 import os
 import requests
+import re
+
+
+def sanitize_text_for_prompt(text: str) -> str:
+    """
+    プロンプトインジェクション対策: テキストをサニタイズ
+
+    Args:
+        text: 入力テキスト
+
+    Returns:
+        サニタイズされたテキスト
+    """
+    # 制御文字を除去
+    text = re.sub(r'[\x00-\x1F\x7F]', '', text)
+
+    # 長すぎるテキストは切り詰め（5000文字まで）
+    if len(text) > 5000:
+        text = text[:5000]
+
+    return text
 
 
 def get_available_models() -> list:
     """Ollamaで利用可能なモデル一覧を取得"""
     try:
         import requests
-        
+
         response = requests.get("http://localhost:11434/api/tags", timeout=10)
         if response.status_code == 200:
             models = response.json().get("models", [])
             return [model["name"] for model in models]
     except Exception as e:
         print(f"モデル一覧取得エラー: {e}", file=sys.stderr)
-    
+
     return []
 
 
@@ -41,20 +62,23 @@ def translate_with_ollama(text: str, model: str = "qwen2.5:7b", timeout: int = 1
     """Ollamaで翻訳"""
     try:
         import requests
-        
+
+        # テキストのサニタイズ
+        text = sanitize_text_for_prompt(text)
+
         # モデル存在確認
         available_models = get_available_models()
         if available_models and model not in available_models:
             print(f"警告: モデル '{model}' が見つかりません", file=sys.stderr)
             print(f"利用可能なモデル: {available_models}", file=sys.stderr)
-            
+
             # 代替モデルを提案
-            chinese_models = [m for m in available_models if any(keyword in m.lower() 
+            chinese_models = [m for m in available_models if any(keyword in m.lower()
                             for keyword in ['qwen', 'chatglm', 'baichuan', 'llama2-chinese'])]
             if chinese_models:
                 suggested_model = chinese_models[0]
                 print(f"中国語対応モデルの候補: {suggested_model}", file=sys.stderr)
-        
+
         response = requests.post(
             "http://localhost:11434/api/generate",
             json={
@@ -70,7 +94,7 @@ def translate_with_ollama(text: str, model: str = "qwen2.5:7b", timeout: int = 1
             print(f"翻訳成功: {text[:20]}... -> {result[:20]}...")
             return result
         else:
-            print(f"Ollamaエラー: {response.status_code} - {response.text}", file=sys.stderr)
+            print(f"Ollamaエラー: ステータスコード {response.status_code}", file=sys.stderr)
             
     except Exception as e:
         print(f"翻訳エラー: {e}", file=sys.stderr)
@@ -81,12 +105,16 @@ def translate_with_ollama(text: str, model: str = "qwen2.5:7b", timeout: int = 1
 
 def translate_with_gemini(text: str, api_key: str, model: str = "gemini-1.5-flash") -> Optional[str]:
     """Gemini APIで翻訳"""
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
-    
+    # テキストのサニタイズ
+    text = sanitize_text_for_prompt(text)
+
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+
     headers = {
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "x-goog-api-key": api_key
     }
-    
+
     prompt = f"Translate the following Chinese text into natural Japanese. Only output the translated text.\n\nText: {text}"
     
     data = {
@@ -112,7 +140,7 @@ def translate_with_gemini(text: str, api_key: str, model: str = "gemini-1.5-flas
                 print(f"Geminiレスポンス解析エラー: {e}", file=sys.stderr)
                 return None
         else:
-            print(f"Gemini APIエラー: {response.status_code} - {response.text}", file=sys.stderr)
+            print(f"Gemini APIエラー: ステータスコード {response.status_code}", file=sys.stderr)
             return None
             
     except Exception as e:

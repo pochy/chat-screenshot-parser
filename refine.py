@@ -127,14 +127,22 @@ class TextRefiner:
     def check_naturalness_with_llm(self, text: str) -> float:
         """
         LLMを使用して日本語の自然さを判定
-        
+
         Args:
             text: テキスト
-            
+
         Returns:
             0.0〜1.0のスコア
         """
         try:
+            # テキストのサニタイズ
+            # 制御文字を除去
+            text = re.sub(r'[\x00-\x1F\x7F]', '', text)
+
+            # 長すぎるテキストは切り詰め（1000文字まで）
+            if len(text) > 1000:
+                text = text[:1000]
+
             prompt = f"""
 あなたは日本語の校正者です。以下のテキストが自然な日本語かどうかを 0.0 から 1.0 のスコアで評価してください。
 1.0 は完全に自然、0.0 は完全に意味不明またはノイズです。

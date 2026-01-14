@@ -453,18 +453,27 @@ class WeChatExtractor:
     ) -> int:
         """
         ディレクトリ内の全画像から会話を抽出
-        
+
         Args:
             input_dir: 入力ディレクトリ
             output_file: 出力JSONLファイル
             checkpoint_file: チェックポイントファイル（中断再開用）
             max_count: 処理する最大枚数（0の場合は無制限）
-            
+
         Returns:
             処理した画像数
         """
-        input_path = Path(input_dir)
-        output_path = Path(output_file)
+        input_path = Path(input_dir).resolve()
+        output_path = Path(output_file).resolve()
+
+        # 入力パスのセキュリティチェック
+        if not input_path.exists():
+            logger.error(f"入力ディレクトリが存在しません: {input_path}")
+            return 0
+
+        if not input_path.is_dir():
+            logger.error(f"入力パスがディレクトリではありません: {input_path}")
+            return 0
         
         # 出力ディレクトリ作成
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -481,9 +490,13 @@ class WeChatExtractor:
         # チェックポイントの読み込み
         processed_files = set()
         if checkpoint_file and Path(checkpoint_file).exists():
-            with open(checkpoint_file, 'r') as f:
-                processed_files = set(json.load(f))
-            logger.info(f"チェックポイントから{len(processed_files)}件のファイルをスキップ")
+            try:
+                with open(checkpoint_file, 'r') as f:
+                    processed_files = set(json.load(f))
+                logger.info(f"チェックポイントから{len(processed_files)}件のファイルをスキップ")
+            except (json.JSONDecodeError, ValueError) as e:
+                logger.warning(f"チェックポイントファイルの読み込みエラー: {e}")
+                logger.warning("チェックポイントを無視して最初から処理します")
         
         # 処理
         all_messages = []

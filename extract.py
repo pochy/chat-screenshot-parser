@@ -233,6 +233,40 @@ class WeChatExtractor:
             return ("user_a", "ja")
         else:
             return ("user_b", "zh")
+            
+    def _is_centered(self, x_center: float, img_width: int, threshold: float = 0.15) -> bool:
+        """
+        テキストが中央付近にあるか判定（厳密）
+        
+        Args:
+            x_center: テキストのX中心座標
+            img_width: 画像の幅
+            threshold: 中心からの許容誤差（割合）。0.15なら幅の30%の範囲
+            
+        Returns:
+            中央にあるならTrue
+        """
+        return abs(x_center - img_width / 2) < img_width * threshold
+
+    def _check_lang_consistency(self, text: str, current_lang: str) -> str:
+        """
+        言語とテキストの内容が矛盾していないかチェックし、必要なら修正
+        
+        特に user_b (zh) と判定されたのに日本語が含まれるケースを救済
+        
+        Args:
+            text: テキスト
+            current_lang: 現在の言語判定結果
+            
+        Returns:
+            修正後の言語コード
+        """
+        if current_lang == "zh":
+            # ひらがな・カタカナが含まれているかチェック
+            if re.search(r'[\u3040-\u309F\u30A0-\u30FF]', text):
+                return "ja"
+        return current_lang
+
     
     def _detect_reply(self, ocr_results: List, current_idx: int) -> Optional[str]:
         """
@@ -320,7 +354,7 @@ class WeChatExtractor:
                     id=self._generate_message_id(),
                     timestamp=self.current_timestamp,
                     speaker="system",
-                    lang="system",
+                    lang="ja",
                     type="system",
                     text=text_ch,
                     source_file=os.path.basename(image_path),
@@ -331,6 +365,29 @@ class WeChatExtractor:
             
             # 話者検出（位置ベース）
             speaker, lang = self._detect_speaker(x_center, width)
+            
+            # 中央にあるがシステムパターンにマッチしなかった場合の救済措置
+            # 中央に位置する意味不明なテキストはシステムメッセージ（またはノイズ）として扱う
+            if self._is_centered(x_center, width):
+                # ユーザーの発言が偶然中央に来ることは稀（極端に短い場合など）
+                # ここでは安全側に倒してシステムメッセージ扱いにする
+                # ただし信頼度は少し下げるか、システムメッセージとして処理
+                msg = Message(
+                    id=self._generate_message_id(),
+                    timestamp=self.current_timestamp,
+                    speaker="system",
+                    lang="ja", # システムメッセージは日本語として扱う
+                    type="system",
+                    text=text_ch,
+                    source_file=os.path.basename(image_path),
+                    confidence=confidence_ch * 0.8 # 確信度を下げる
+                )
+                messages.append(msg)
+                continue
+
+            # 言語の整合性チェック
+            # user_b (zh) なのに日本語が含まれる場合は言語を ja に変更
+            lang = self._check_lang_consistency(text_ch, lang)
             
             # 右側（日本語）の場合は日本語OCRで再認識
             if speaker == "user_a":
@@ -391,7 +448,8 @@ class WeChatExtractor:
         self,
         input_dir: str,
         output_file: str,
-        checkpoint_file: Optional[str] = None
+        checkpoint_file: Optional[str] = None,
+        max_count: int = 0
     ) -> int:
         """
         ディレクトリ内の全画像から会話を抽出
@@ -400,6 +458,7 @@ class WeChatExtractor:
             input_dir: 入力ディレクトリ
             output_file: 出力JSONLファイル
             checkpoint_file: チェックポイントファイル（中断再開用）
+            max_count: 処理する最大枚数（0の場合は無制限）
             
         Returns:
             処理した画像数
@@ -460,6 +519,11 @@ class WeChatExtractor:
                     with open(checkpoint_file, 'w') as f:
                         json.dump(list(processed_files), f)
                     logger.info(f"チェックポイント保存: {processed_count}件処理済み")
+                
+                # 最大処理数に達したら終了
+                if max_count > 0 and processed_count >= max_count:
+                    logger.info(f"指定された最大処理数({max_count}枚)に達しました")
+                    break
         
         except KeyboardInterrupt:
             logger.info("中断されました。チェックポイントを保存します...")
@@ -479,27 +543,57 @@ class WeChatExtractor:
 
 def main():
     parser = argparse.ArgumentParser(
-        description='WeChat スクリーンショットから会話を抽出'
+        description='WeChatスクリーンショットから会話履歴を抽出し、JSONL形式で保存します。',
+        epilog='''
+使用例:
+  # 基本的な使い方 (ディレクトリ内の全画像を処理)
+  python extract.py --input ./screenshots --output ./output/conversations.jsonl
+
+  # GPUを使用せずにCPUで実行
+  python extract.py --input ./screenshots --output ./output/conversations.jsonl --no-gpu
+
+  # 処理枚数を制限 (最初の100枚のみ処理)
+  python extract.py --input ./screenshots --output ./output/conversations.jsonl --count 100
+
+  # 中断・再開機能を使用 (大量の画像処理時におすすめ)
+  python extract.py --input ./screenshots --output ./output/conversations.jsonl --checkpoint ./checkpoint.json
+''',
+        formatter_class=argparse.RawDescriptionHelpFormatter
     )
+    
     parser.add_argument(
         '--input', '-i',
         required=True,
-        help='入力ディレクトリ（スクリーンショットが格納されている）'
+        metavar='DIR',
+        help='入力画像ディレクトリのパス (必須)。対応形式: .png, .jpg, .jpeg'
     )
+    
     parser.add_argument(
         '--output', '-o',
         required=True,
-        help='出力JSONLファイルパス'
+        metavar='FILE',
+        help='出力JSONLファイルのパス (必須)。会話データが1行ずつ追記されます。'
     )
+    
     parser.add_argument(
         '--checkpoint', '-c',
         default=None,
-        help='チェックポイントファイル（中断再開用）'
+        metavar='FILE',
+        help='チェックポイントファイルのパス。処理済みファイルを記録し、中断後の再開を可能にします。'
     )
+    
+    parser.add_argument(
+        '--count', '--limit', '-n',
+        type=int,
+        default=0,
+        metavar='N',
+        help='処理する最大画像枚数。テスト実行時に便利です (デフォルト: 0 = 無制限)'
+    )
+    
     parser.add_argument(
         '--no-gpu',
         action='store_true',
-        help='GPUを使用しない'
+        help='GPUを使用せずCPUのみで処理します (低速ですがGPUがない環境でも動作します)'
     )
     
     args = parser.parse_args()
@@ -511,7 +605,8 @@ def main():
     extractor.extract_from_directory(
         input_dir=args.input,
         output_file=args.output,
-        checkpoint_file=args.checkpoint
+        checkpoint_file=args.checkpoint,
+        max_count=args.count
     )
 
 

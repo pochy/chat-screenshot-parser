@@ -19,8 +19,10 @@ WeChat のスクリーンショットから会話を自動抽出し、JSONL 形�
 - **位置ベース話者判定**: WeChat の UI（左=ユーザー B、右=ユーザー A）を利用した自動判定
 - **GPU 対応**: RTX 3060 Ti 等で高速処理（1 枚あたり約 0.2 秒）
 - **タイムスタンプ抽出**: WeChat 形式（`2025-6-18 20:03`等）を自動検出
+- **システムメッセージ判定**: 特定のキーワードだけでなく、画面中央のテキストを自動判定
 - **中断・再開機能**: チェックポイント対応で大量画像も安心
 - **重複除去**: スクロールキャプチャによる重複メッセージを自動除去
+- **品質補正**: OCR特有の誤り（`70üTübé`など）や言語不整合を自動検知・修正
 
 ## 環境構築
 
@@ -83,14 +85,108 @@ python -c "from paddleocr import PaddleOCR; print('OK')"
 
 ### 処理フロー
 
+```mermaid
+graph LR
+    A[📁 screenshots/*.png] -->|extract.py| B[📄 conversations.jsonl]
+    B -->|dedupe.py| C[📄 deduped.jsonl]
+    C -->|refine.py| D[📄 refined.jsonl]
+    D -->|analyze.py| E[📊 report.txt]
+    D -->|translate.py| F[📄 translated.jsonl]
+
+    style A fill:#e1f5ff
+    style B fill:#fff4e1
+    style C fill:#fff4e1
+    style D fill:#fff4e1
+    style E fill:#e8f5e9
+    style F fill:#e8f5e9
 ```
-screenshots/           抽出              重複除去            分析
-    *.png      →  conversations.jsonl  →  deduped.jsonl  →  report.txt
-               extract.py            dedupe.py         analyze.py
-                                                           ↓
-                                                      translate.py
-                                                           ↓
-                                                    translated.jsonl
+
+#### 詳細フロー
+
+```mermaid
+flowchart TD
+    Start([WeChat スクリーンショット]) --> Extract
+
+    subgraph Extract["Step 1: OCR 抽出 (extract.py)"]
+        E1[中国語OCR でテキスト位置検出]
+        E2{位置判定}
+        E3[右側: 日本語OCR で再認識<br/>user_a]
+        E4[左側: 中国語OCR 結果使用<br/>user_b]
+        E5[中央: タイムスタンプ/システム判定]
+        E1 --> E2
+        E2 -->|右| E3
+        E2 -->|左| E4
+        E2 -->|中央| E5
+        E3 --> E6[conversations.jsonl]
+        E4 --> E6
+        E5 --> E6
+    end
+
+    Extract --> Dedupe
+
+    subgraph Dedupe["Step 2: 重複除去 (dedupe.py)"]
+        D1[メッセージペアの類似度計算<br/>Jaccard係数]
+        D2{類似度 > 0.8?}
+        D3[重複を除去]
+        D1 --> D2
+        D2 -->|Yes| D3
+        D2 -->|No| D4[保持]
+        D3 --> D5[deduped.jsonl]
+        D4 --> D5
+    end
+
+    Dedupe --> Refine
+
+    subgraph Refine["Step 3: 品質補正 (refine.py)"]
+        R1[ルールベース補正<br/>既知のOCRエラー修正]
+        R2{LLM使用?}
+        R3[LLMで品質評価<br/>naturalness スコア付与]
+        R4[needs_review フラグ設定]
+        R1 --> R2
+        R2 -->|--use-llm| R3
+        R2 -->|No| R4
+        R3 --> R4
+        R4 --> R5[refined.jsonl]
+    end
+
+    Refine --> Branch{用途選択}
+
+    subgraph Analyze["Step 4a: 分析 (analyze.py)"]
+        A1[統計情報生成]
+        A2[キーワード検索]
+        A3[レポート出力]
+        A1 --> A3
+        A2 --> A3
+        A3 --> A4[report.txt / stats.json]
+    end
+
+    subgraph Translate["Step 4b: 翻訳 (translate.py)"]
+        T1{翻訳バックエンド}
+        T2[Ollama<br/>ローカルLLM]
+        T3[Gemini API<br/>高速・高精度]
+        T4[Export<br/>外部翻訳用]
+        T1 -->|--backend ollama| T2
+        T1 -->|--backend gemini| T3
+        T1 -->|--backend export| T4
+        T2 --> T5[translated.jsonl]
+        T3 --> T5
+        T4 --> T6[to_translate.txt]
+    end
+
+    Branch -->|分析| Analyze
+    Branch -->|翻訳| Translate
+
+    Analyze --> End1([📊 統計・検索結果])
+    Translate --> End2([🌐 翻訳済みデータ])
+
+    style Start fill:#e3f2fd
+    style End1 fill:#c8e6c9
+    style End2 fill:#c8e6c9
+    style Extract fill:#fff9c4
+    style Dedupe fill:#ffe0b2
+    style Refine fill:#ffccbc
+    style Analyze fill:#c5cae9
+    style Translate fill:#b2dfdb
 ```
 
 ### Step 1: OCR 抽出
@@ -115,6 +211,12 @@ python extract.py \
     --input ./screenshots \
     --output ./output/conversations.jsonl \
     --no-gpu
+
+# テスト用に最初の100枚だけ処理
+python extract.py \
+    --input ./screenshots \
+    --output ./output/conversations.jsonl \
+    --count 100
 ```
 
 ### Step 2: 重複除去
@@ -125,17 +227,34 @@ python extract.py \
 python dedupe.py --input ./output/conversations.jsonl --output ./output/deduped.jsonl
 ```
 
-### Step 3: 分析
+### Step 3: 品質補正 (推奨)
+
+OCRの誤認識や不自然な日本語を検知・補正します。
+
+```bash
+# 基本的な使用方法 (ルールベースのみ・高速)
+python refine.py --input ./output/deduped.jsonl --output ./output/refined.jsonl
+
+# LLMを使用して高精度に判定 (推奨)
+# ※ Ollama等のローカルLLMサーバーが必要です
+python refine.py \
+    --input ./output/deduped.jsonl \
+    --output ./output/refined.jsonl \
+    --use-llm \
+    --llm-model qwen2.5:7b
+```
+
+### Step 4: 分析
 
 ```bash
 # レポート表示
-python analyze.py --input ./output/deduped.jsonl
+python analyze.py --input ./output/refined.jsonl
 
 # キーワード検索
-python analyze.py --input ./output/deduped.jsonl --search "炭酸"
+python analyze.py --input ./output/refined.jsonl --search "炭酸"
 
 # JSON形式で出力
-python analyze.py --input ./output/deduped.jsonl --json > stats.json
+python analyze.py --input ./output/refined.jsonl --json > stats.json
 ```
 
 ### Step 4: 翻訳（オプション）
@@ -145,14 +264,23 @@ python analyze.py --input ./output/deduped.jsonl --json > stats.json
 ```bash
 # Ollama使用（ローカルLLM）
 python translate.py \
-    --input ./output/deduped.jsonl \
+    --input ./output/refined.jsonl \
     --output ./output/translated.jsonl \
     --backend ollama \
-    --model qwen2:7b
+    --model qwen2.5:7b
+
+# Gemini API使用（要API Key・高速）
+# 環境変数 GOOGLE_API_KEY を設定するか、--api-key で指定
+export GOOGLE_API_KEY="your_api_key_here"
+python translate.py \
+    --input ./output/refined.jsonl \
+    --output ./output/translated.jsonl \
+    --backend gemini \
+    --model gemini-1.5-flash
 
 # 外部翻訳用にエクスポート
 python translate.py \
-    --input ./output/deduped.jsonl \
+    --input ./output/refined.jsonl \
     --output ./output/to_translate.txt \
     --backend export
 ```
@@ -170,7 +298,7 @@ JSONL 形式で 1 行 1 メッセージ：
 ```jsonl
 {"id": "msg_000001", "speaker": "user_a", "lang": "ja", "type": "text", "text": "美味しそう", "source_file": "CleanShot 2026-01-13 at 19.12.53@2x.png", "confidence": 0.91}
 {"id": "msg_000002", "speaker": "user_b", "lang": "zh", "type": "text", "text": "吃晚饭了吗？", "source_file": "CleanShot 2026-01-13 at 19.12.53@2x.png", "confidence": 0.95}
-{"id": "msg_000003", "timestamp": "2025-06-18T20:10:00+09:00", "speaker": "user_a", "lang": "ja", "type": "text", "text": "もう食べたよ！カレーラーメン", "source_file": "CleanShot 2026-01-13 at 19.12.53@2x.png", "confidence": 0.99}
+{"id": "msg_000003", "timestamp": "2025-06-18T20:10:00+09:00", "speaker": "user_a", "lang": "ja", "type": "text", "text": "もう食べたよ！カレーラーメン", "source_file": "CleanShot 2026-01-13 at 19.12.53@2x.png", "confidence": 0.99, "naturalness": 1.0}
 {"id": "msg_000004", "timestamp": "2025-06-18T20:10:00+09:00", "speaker": "user_b", "lang": "zh", "type": "text", "text": "好吧，原来你也吃的面条。", "source_file": "CleanShot 2026-01-13 at 19.12.53@2x.png", "confidence": 0.99}
 ```
 
@@ -187,6 +315,8 @@ JSONL 形式で 1 行 1 メッセージ：
 | `reply_to`    | 引用返信の元テキスト（任意）  |                              |
 | `source_file` | 抽出元ファイル名              |                              |
 | `confidence`  | OCR 信頼度スコア（0-1）       | `0.95`                       |
+| `naturalness` | 日本語の自然さスコア（0-1）   | `1.0`                        |
+| `needs_review`| 確認が必要か                  | `true`                       |
 | `text_ja`     | 日本語翻訳（翻訳後）          |                              |
 
 ## ディレクトリ構成
@@ -196,6 +326,7 @@ wechat_extractor/
 ├── extract.py          # メイン抽出スクリプト（デュアルOCR）
 ├── dedupe.py           # 重複除去スクリプト
 ├── analyze.py          # 分析・統計・検索スクリプト
+├── refine.py           # 品質補正・評価スクリプト
 ├── translate.py        # 翻訳追加スクリプト
 ├── run_pipeline.sh     # 一括実行スクリプト
 ├── config.yaml         # 設定ファイル
@@ -210,6 +341,7 @@ your_project/
 └── output/             # 出力
     ├── conversations.jsonl   # 抽出結果（生データ）
     ├── deduped.jsonl         # 重複除去後
+    ├── refined.jsonl         # 補正後
     ├── translated.jsonl      # 翻訳追加後
     ├── checkpoint.json       # チェックポイント
     └── report.txt            # 分析レポート

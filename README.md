@@ -163,13 +163,16 @@ flowchart TD
     subgraph Translate["Step 4b: 翻訳 (translate.py)"]
         T1{翻訳バックエンド}
         T2[Ollama<br/>ローカルLLM]
-        T3[Gemini API<br/>高速・高精度]
+        T3[Gemini 通常API<br/>リアルタイム]
+        T3B[Gemini バッチAPI<br/>50%割引]
         T4[Export<br/>外部翻訳用]
         T1 -->|--backend ollama| T2
         T1 -->|--backend gemini| T3
+        T1 -->|--backend gemini-batch| T3B
         T1 -->|--backend export| T4
         T2 --> T5[translated.jsonl]
         T3 --> T5
+        T3B --> T5
         T4 --> T6[to_translate.txt]
     end
 
@@ -261,24 +264,79 @@ python analyze.py --input ./output/refined.jsonl --json > stats.json
 
 中国語メッセージに日本語翻訳を追加します。
 
+#### 翻訳バックエンドの比較
+
+| バックエンド | コスト | 速度 | プライバシー | 用途 |
+|-------------|--------|------|-------------|------|
+| `ollama` | 無料 | GPU依存 | ローカル完結 | プライバシー重視 |
+| `gemini` | 有料 | 高速 | クラウド送信 | リアルタイム処理 |
+| `gemini-batch` | **50%割引** | 非同期 | クラウド送信 | 大量翻訳（推奨） |
+| `export` | - | - | - | 外部ツール連携 |
+
+#### Ollama使用（ローカルLLM・無料）
+
 ```bash
-# Ollama使用（ローカルLLM）
 python translate.py \
     --input ./output/refined.jsonl \
     --output ./output/translated.jsonl \
     --backend ollama \
     --model qwen2.5:7b
+```
 
-# Gemini API使用（要API Key・高速）
+#### Gemini 通常API（リアルタイム）
+
+```bash
 # 環境変数 GOOGLE_API_KEY を設定するか、--api-key で指定
 export GOOGLE_API_KEY="your_api_key_here"
 python translate.py \
     --input ./output/refined.jsonl \
     --output ./output/translated.jsonl \
     --backend gemini \
-    --model gemini-1.5-flash
+    --model gemini-2.0-flash
+```
 
-# 外部翻訳用にエクスポート
+#### Gemini バッチAPI（50%割引・大量翻訳推奨）
+
+大量のメッセージを翻訳する場合は、バッチAPIが最もコスト効率が良いです。
+
+```bash
+# バッチAPI使用（50%割引）
+export GOOGLE_API_KEY="your_api_key_here"
+python translate.py \
+    --input ./output/refined.jsonl \
+    --output ./output/translated.jsonl \
+    --backend gemini-batch \
+    --model gemini-2.0-flash
+
+# オプション: バッチサイズとポーリング間隔を調整
+python translate.py \
+    --input ./output/refined.jsonl \
+    --output ./output/translated.jsonl \
+    --backend gemini-batch \
+    --model gemini-3-flash-preview \
+    --batch-size 200 \
+    --poll-interval 60
+```
+
+**注意**: バッチAPIは非同期処理のため、完了まで時間がかかる場合があります（通常数分〜24時間以内）。
+
+**必要なパッケージ**:
+```bash
+pip install google-genai
+```
+
+#### 料金目安（10,000件の中国語メッセージの場合）
+
+| バックエンド | モデル | 推定料金 |
+|-------------|--------|----------|
+| `gemini` | gemini-2.0-flash | 約$0.15（約24円） |
+| `gemini-batch` | gemini-2.0-flash | **約$0.08（約12円）** |
+| `gemini` | gemini-3-flash-preview | 約$1.00（約160円） |
+| `gemini-batch` | gemini-3-flash-preview | **約$0.50（約80円）** |
+
+#### 外部翻訳用にエクスポート
+
+```bash
 python translate.py \
     --input ./output/refined.jsonl \
     --output ./output/to_translate.txt \

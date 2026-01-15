@@ -17,7 +17,7 @@
 - `extract.py` - メインOCR抽出（デュアルOCR: 日本語/中国語）
 - `dedupe.py` - 重複除去（Jaccard類似度ベース）
 - `analyze.py` - 分析・統計
-- `translate.py` - 翻訳（Ollama対応）
+- `translate.py` - 翻訳（Ollama/Gemini対応、詳細翻訳モード追加）
 
 ## コマンド
 - 仮想環境: `source venv/bin/activate`
@@ -25,7 +25,9 @@
 - 単体抽出: `python extract.py --input ./screenshots --output output/conversations.jsonl`
 - 重複除去: `python dedupe.py output/conversations.jsonl output/deduped.jsonl`
 - 分析: `python analyze.py output/deduped.jsonl`
-- 翻訳: `python translate.py --backend ollama output/deduped.jsonl output/translated.jsonl`
+- 簡易翻訳: `python translate.py --backend gemini output/deduped.jsonl output/translated.jsonl`
+- 詳細翻訳: `python translate.py --backend gemini --detailed output/deduped.jsonl output/detailed.jsonl`
+- テスト翻訳（10件のみ）: `python translate.py --backend gemini --count 10 output/deduped.jsonl output/test.jsonl`
 
 ## 出力形式 (JSONL)
 各行は以下のフィールドを持つ：
@@ -37,10 +39,16 @@
   "lang": "ja",
   "type": "text",
   "text": "メッセージ本文",
+  "text_ja": "日本語翻訳（簡易）",
+  "text_ja_detailed": "## 原文\n...\n## 日本語の意味（自然訳）\n...",
   "source_file": "screenshot.png",
   "confidence": 0.95
 }
 ```
+
+**フィールド説明:**
+- `text_ja`: 簡易翻訳（常に追加）
+- `text_ja_detailed`: 詳細翻訳（--detailed 使用時のみ、Markdown形式）
 
 ## 話者判定ロジック
 - 右側テキスト → `user_a`（日本語、日本語OCR使用）
@@ -51,3 +59,7 @@
 - PaddleOCR v3.x は API が異なるため使用不可
 - GPU使用時は CUDA 11.8+ が必要
 - 大量画像処理時はチェックポイント機能を活用
+- 詳細翻訳（--detailed）は通常翻訳の約20倍のコストがかかる
+- 詳細翻訳は gemini バックエンドのみ対応（gemini-batch 非対応）
+- テスト実行時は --count オプションで処理件数を制限可能（例: --count 10）
+- Gemini API使用時は処理実行前に確認プロンプトが表示される（送信データサイズ・推定料金）

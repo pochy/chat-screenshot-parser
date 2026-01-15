@@ -2,19 +2,25 @@
 """
 中国語メッセージに日本語翻訳を追加するツール
 
-ローカルLLM（Ollama等）またはバッチ処理用
+ローカルLLM(Ollama等)またはバッチ処理用
 
 使用方法:
-    # Ollama使用（qwen2等の中国語対応モデル推奨）
+    # Ollama使用(qwen2等の中国語対応モデル推奨)
     python translate.py --input ./output/conversations.jsonl --output ./output/translated.jsonl --backend ollama --model qwen2.5:7b
 
-    # Gemini通常API（リアルタイム翻訳）
-    python translate.py --input ./output/conversations.jsonl --output ./output/translated.jsonl --backend gemini --model gemini-3-flash-preview
+    # Ollama詳細翻訳(単語解説・ニュアンス分析・返信案を含む)
+    python translate.py --input ./output/conversations.jsonl --output ./output/translated.jsonl --backend ollama --model qwen2.5:7b --detailed
 
-    # Gemini バッチAPI（50%割引、非同期処理）
-    python translate.py --input ./output/conversations.jsonl --output ./output/translated.jsonl --backend gemini-batch --model gemini-3-flash-preview
+    # Gemini通常API(リアルタイム翻訳)
+    python translate.py --input ./output/conversations.jsonl --output ./output/translated.jsonl --backend gemini --model gemini-2.0-flash
 
-    # 翻訳なしで text_ja フィールドだけ追加（後で手動/他ツールで翻訳）
+    # Gemini詳細翻訳(単語解説・ニュアンス分析・返信案を含む)
+    python translate.py --input ./output/conversations.jsonl --output ./output/translated.jsonl --backend gemini --model gemini-2.0-flash --detailed
+
+    # Gemini バッチAPI(50%割引、非同期処理)
+    python translate.py --input ./output/conversations.jsonl --output ./output/translated.jsonl --backend gemini-batch --model gemini-2.0-flash
+
+    # 翻訳なしで text_ja フィールドだけ追加(後で手動/他ツールで翻訳)
     python translate.py --input ./output/conversations.jsonl --output ./output/with_text_ja.jsonl --backend none
 """
 
@@ -115,6 +121,118 @@ def translate_with_ollama(text: str, model: str = "qwen2.5:7b", timeout: int = 1
     return None
 
 
+def translate_with_ollama_detailed(
+    text: str,
+    model: str = "qwen2.5:7b",
+    timeout: int = 300
+) -> Optional[str]:
+    """Ollamaで詳細翻訳（単語分解、ニュアンス分析、返信案を含む）
+
+    Args:
+        text: 翻訳する中国語テキスト
+        model: 使用するOllamaモデル
+        timeout: タイムアウト秒数（詳細翻訳は時間がかかるため長めに設定）
+
+    Returns:
+        Markdown形式の詳細解説、失敗時はNone
+    """
+    try:
+        import requests
+
+        # テキストのサニタイズ
+        text = sanitize_text_for_prompt(text)
+
+        # モデル存在確認
+        available_models = get_available_models()
+        if available_models and model not in available_models:
+            print(f"警告: モデル '{model}' が見つかりません", file=sys.stderr)
+            print(f"利用可能なモデル: {available_models}", file=sys.stderr)
+
+        # プロンプト生成
+        prompt = DETAILED_TRANSLATION_PROMPT.format(text=text)
+
+        response = requests.post(
+            "http://localhost:11434/api/generate",
+            json={
+                "model": model,
+                "prompt": prompt,
+                "stream": False,
+                "options": {
+                    "temperature": 0.3,  # 返信案生成のため若干高め
+                    "num_predict": 4096  # 詳細レスポンスのため長めに設定
+                }
+            },
+            timeout=timeout
+        )
+
+        if response.status_code == 200:
+            detailed_translation = response.json().get("response", "").strip()
+
+            # バリデーション
+            if validate_detailed_response(detailed_translation):
+                print(f"詳細翻訳成功: {text[:20]}... ({len(detailed_translation)} chars)")
+                return detailed_translation
+            else:
+                print(f"警告: 一部のセクションが欠落しています: {text[:20]}...", file=sys.stderr)
+                # 部分的な結果でも返す
+                return detailed_translation
+        else:
+            print(f"Ollamaエラー: ステータスコード {response.status_code}", file=sys.stderr)
+            return None
+
+    except Exception as e:
+        print(f"詳細翻訳エラー: {e}", file=sys.stderr)
+        return None
+
+
+def confirm_translation(messages: List[dict], detailed: bool = False, model: str = "gemini-2.0-flash") -> bool:
+    """翻訳実行の確認プロンプトを表示
+
+    Args:
+        messages: 翻訳対象のメッセージリスト
+        detailed: 詳細翻訳モードかどうか
+        model: 使用するモデル
+
+    Returns:
+        ユーザーが続行を選択した場合True
+    """
+    # データサイズ計算
+    data_size = calculate_data_size(messages)
+
+    # コスト推定
+    avg_chars = sum(len(m.get("text", "")) for m in messages) / len(messages) if messages else 0
+    if detailed:
+        cost_estimate = estimate_detailed_cost(len(messages), int(avg_chars))
+        mode_str = "詳細翻訳"
+    else:
+        cost_estimate = estimate_simple_cost(len(messages), int(avg_chars))
+        mode_str = "簡易翻訳"
+
+    # 確認プロンプト表示
+    print("\n" + "="*60)
+    print(f"【{mode_str}モード】処理実行の確認")
+    print("="*60)
+    print(f"モデル: {model}")
+    print(f"送信メッセージ数: {len(messages)}件")
+    print(f"送信データサイズ: {data_size['size_str']}")
+    print(f"推定料金: ${cost_estimate['estimated_cost_usd']} (約{cost_estimate['estimated_cost_jpy']}円)")
+    print(f"推定トークン: 入力 {cost_estimate['estimated_input_tokens']}, 出力 {cost_estimate['estimated_output_tokens']}")
+    print("="*60)
+
+    # ユーザー入力
+    try:
+        response = input("続行しますか？ [Y/n]: ").strip().lower()
+        if response == '' or response == 'y' or response == 'yes':
+            print("処理を開始します...\n")
+            return True
+        else:
+            print("処理をキャンセルしました。")
+            return False
+    except (KeyboardInterrupt, EOFError):
+        print("\n処理をキャンセルしました。")
+        return False
+
+
 def translate_with_gemini(text: str, api_key: str, model: str = "gemini-1.5-flash") -> Optional[str]:
     """Gemini APIで翻訳"""
     # テキストのサニタイズ
@@ -160,13 +278,283 @@ def translate_with_gemini(text: str, api_key: str, model: str = "gemini-1.5-flas
         return None
 
 
+# 詳細翻訳用プロンプトテンプレート
+DETAILED_TRANSLATION_PROMPT = """あなたは日本人学習者を支援する中国語教師です。会話相手から受け取った中国語メッセージを、包括的に解説してください。
+
+**重要：まず原文に誤字・脱字がないか確認し、もし誤りがあれば修正してから解説を進めてください。**
+
+以下の中国語テキストを分析し、下記のフォーマットで日本語で説明してください：
+
+## 原文
+
+{text}
+
+**誤字がある場合のみ：**
+※自然な中国語：**[修正後の正しい中国語]**
+※文脈上、「[誤字]」ではなく **「[正しい字]」** の誤字だと判断します。
+
+---
+
+## 日本語の意味（自然訳）
+
+自然で流暢な日本語訳を提供してください。直訳ではなく、日本語として自然な表現にしてください。
+**誤字があった場合は、修正後の中国語を基に翻訳してください。**
+
+---
+
+## 中国語の分解解説
+
+以下のマークダウンテーブル形式で、テキスト中の重要な単語・フレーズを解説してください：
+
+| 単語 | 品詞 | ピンイン | 意味 | 新HSK | 解説 |
+| :-- | :---- | :---------- | :------- | :--- | :----------- |
+
+**注意点：**
+- テキスト中の主要な単語・慣用句を全て含めること
+- 新HSKレベル（1-9）を正確に記載
+- 「解説」列では、この文脈での役割や感情的ニュアンスを説明
+- 誤字があった場合は、正しい単語を解説に含めること
+
+**誤字がある場合のみ：**
+🔎 **補足**
+* 「[誤字を含む表現]」＝[不自然な意味]、という意味になり不自然
+
+---
+
+## 全体のニュアンス
+
+メッセージ全体の感情的トーン、二人の関係性、文化的背景を分析してください。
+
+**分析ポイント：**
+- 感情的トーン（優しい、心配、楽しい、など）
+- 関係性（恋人、友人、親密度など）
+- 文化的・社会的背景
+- 込められた意図や期待
+
+箇条書きで、重要な点を**太字**で強調してください。
+
+---
+
+## 日本語での返事案（3パターン）
+
+相手のメッセージに対する返答例を、3つの異なる口調で提案してください：
+
+### 1. **親近感UP案**
+
+**返信例：**
+[親密で思いやりのある返答]
+**理由：**
+[なぜこの返答が効果的か]
+
+---
+
+### 2. **ユーモア案**
+
+**返信例：**
+[明るくカジュアルな返答]
+**理由：**
+[なぜこの返答が効果的か]
+
+---
+
+### 3. **誠実・優しさ案**
+
+**返信例：**
+[相手を安心させる包容力のある返答]
+**理由：**
+[なぜこの返答が効果的か]
+
+---
+
+**重要な指示：**
+- 原文に誤字がある場合は、必ず「原文」セクションで修正版を示すこと
+- 誤字がない場合は、修正に関する記述を省略すること
+- マークダウンテーブルは正しい形式（|で区切り、:--で左揃え）で出力
+- 全てのセクションを必ず含めること
+- 日本語は自然で読みやすい表現を使用
+- 中国語学習者の視点で、具体的で実用的な解説を提供
+"""
+
+
+def validate_detailed_response(response: str) -> bool:
+    """詳細翻訳レスポンスに必要なセクションが全て含まれているか検証"""
+    required_sections = [
+        "## 原文",
+        "## 日本語の意味（自然訳）",
+        "## 中国語の分解解説",
+        "## 全体のニュアンス",
+        "## 日本語での返事案"
+    ]
+    return all(section in response for section in required_sections)
+
+
+def calculate_data_size(messages: List[dict]) -> dict:
+    """メッセージデータのサイズを計算
+
+    Args:
+        messages: メッセージリスト
+
+    Returns:
+        サイズ情報の辞書
+    """
+    total_bytes = sum(len(m.get("text", "").encode('utf-8')) for m in messages)
+
+    if total_bytes < 1024:
+        size_str = f"{total_bytes} B"
+    elif total_bytes < 1024 * 1024:
+        size_str = f"{total_bytes / 1024:.2f} KB"
+    else:
+        size_str = f"{total_bytes / (1024 * 1024):.2f} MB"
+
+    return {
+        "total_bytes": total_bytes,
+        "size_str": size_str
+    }
+
+
+def estimate_simple_cost(message_count: int, avg_chars_per_msg: int = 11) -> dict:
+    """簡易翻訳のコストを推定
+
+    Args:
+        message_count: メッセージ数
+        avg_chars_per_msg: 1メッセージあたりの平均文字数
+
+    Returns:
+        コスト推定情報の辞書
+    """
+    # Gemini 2.0 Flash pricing (2025年1月時点)
+    input_cost_per_1k = 0.000015   # $0.000015/1K tokens
+    output_cost_per_1k = 0.00006   # $0.00006/1K tokens
+
+    # 推定トークン数（簡易翻訳）
+    input_tokens_per_msg = 50 + (avg_chars_per_msg * 1.5)  # 簡易プロンプト + テキスト
+    output_tokens_per_msg = 30  # 簡易翻訳レスポンス
+
+    total_input_tokens = message_count * input_tokens_per_msg
+    total_output_tokens = message_count * output_tokens_per_msg
+
+    input_cost = (total_input_tokens / 1000) * input_cost_per_1k
+    output_cost = (total_output_tokens / 1000) * output_cost_per_1k
+    total_cost = input_cost + output_cost
+
+    return {
+        "message_count": message_count,
+        "estimated_input_tokens": int(total_input_tokens),
+        "estimated_output_tokens": int(total_output_tokens),
+        "estimated_cost_usd": round(total_cost, 4),
+        "estimated_cost_jpy": int(total_cost * 160)  # 1ドル=160円換算
+    }
+
+
+def estimate_detailed_cost(message_count: int, avg_chars_per_msg: int = 20) -> dict:
+    """詳細翻訳のコストを推定
+
+    Args:
+        message_count: メッセージ数
+        avg_chars_per_msg: 1メッセージあたりの平均文字数
+
+    Returns:
+        コスト推定情報の辞書
+    """
+    # Gemini 2.0 Flash pricing (2025年1月時点)
+    input_cost_per_1k = 0.000015   # $0.000015/1K tokens
+    output_cost_per_1k = 0.00006   # $0.00006/1K tokens
+
+    # 推定トークン数
+    input_tokens_per_msg = 800 + (avg_chars_per_msg * 1.5)  # プロンプト + テキスト
+    output_tokens_per_msg = 2000  # 詳細レスポンス
+
+    total_input_tokens = message_count * input_tokens_per_msg
+    total_output_tokens = message_count * output_tokens_per_msg
+
+    input_cost = (total_input_tokens / 1000) * input_cost_per_1k
+    output_cost = (total_output_tokens / 1000) * output_cost_per_1k
+    total_cost = input_cost + output_cost
+
+    return {
+        "message_count": message_count,
+        "estimated_input_tokens": int(total_input_tokens),
+        "estimated_output_tokens": int(total_output_tokens),
+        "estimated_cost_usd": round(total_cost, 4),
+        "estimated_cost_jpy": int(total_cost * 160)  # 1ドル=160円換算
+    }
+
+
+def translate_with_gemini_detailed(
+    text: str,
+    api_key: str,
+    model: str = "gemini-2.0-flash"
+) -> Optional[str]:
+    """Gemini APIで詳細翻訳（単語分解、ニュアンス分析、返信案を含む）
+
+    Args:
+        text: 翻訳する中国語テキスト
+        api_key: Google API Key
+        model: 使用するGeminiモデル
+
+    Returns:
+        Markdown形式の詳細解説、失敗時はNone
+    """
+    # テキストのサニタイズ
+    text = sanitize_text_for_prompt(text)
+
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+
+    headers = {
+        "Content-Type": "application/json",
+        "x-goog-api-key": api_key
+    }
+
+    # プロンプト生成
+    prompt = DETAILED_TRANSLATION_PROMPT.format(text=text)
+
+    data = {
+        "contents": [{
+            "parts": [{"text": prompt}]
+        }],
+        "generationConfig": {
+            "temperature": 0.3  # 返信案生成のため若干高め
+        }
+    }
+
+    try:
+        response = requests.post(url, headers=headers, json=data, timeout=60)
+
+        if response.status_code == 200:
+            result_json = response.json()
+            try:
+                # レスポンス構造: candidates[0].content.parts[0].text
+                detailed_translation = result_json["candidates"][0]["content"]["parts"][0]["text"].strip()
+
+                # バリデーション
+                if validate_detailed_response(detailed_translation):
+                    print(f"詳細翻訳成功: {text[:20]}... ({len(detailed_translation)} chars)")
+                    return detailed_translation
+                else:
+                    print(f"警告: 一部のセクションが欠落しています: {text[:20]}...", file=sys.stderr)
+                    # 部分的な結果でも返す
+                    return detailed_translation
+
+            except (KeyError, IndexError) as e:
+                print(f"Geminiレスポンス解析エラー: {e}", file=sys.stderr)
+                return None
+        else:
+            print(f"Gemini APIエラー: ステータスコード {response.status_code}", file=sys.stderr)
+            return None
+
+    except Exception as e:
+        print(f"詳細翻訳エラー: {e}", file=sys.stderr)
+        return None
+
+
 def translate_with_gemini_batch(
     messages: List[dict],
     api_key: str,
     model: str = "gemini-2.0-flash",
     batch_size: int = 100,
     poll_interval: int = 30,
-    max_wait_time: int = 86400
+    max_wait_time: int = 86400,
+    max_count: int = None
 ) -> Dict[str, str]:
     """
     Gemini Batch APIで一括翻訳（50%割引）
@@ -178,6 +566,7 @@ def translate_with_gemini_batch(
         batch_size: 1バッチあたりのリクエスト数（インライン方式の場合は小さめに）
         poll_interval: ステータス確認間隔（秒）
         max_wait_time: 最大待機時間（秒）
+        max_count: 処理する最大件数（Noneの場合は全件処理）
 
     Returns:
         {message_id: translation} の辞書
@@ -199,8 +588,20 @@ def translate_with_gemini_batch(
         print("翻訳対象のメッセージがありません")
         return translations
 
-    print(f"バッチ翻訳対象: {len(zh_messages)}件 (モデル: {model})")
+    # 件数制限
+    if max_count is not None:
+        original_count = len(zh_messages)
+        zh_messages = zh_messages[:max_count]
+        print(f"バッチ翻訳対象: {original_count}件中、最初の{max_count}件を処理 (モデル: {model})")
+    else:
+        print(f"バッチ翻訳対象: {len(zh_messages)}件 (モデル: {model})")
+
     print("バッチAPIは通常料金の50%割引です")
+
+    # 確認プロンプト
+    if not confirm_translation(zh_messages, detailed=False, model=model):
+        print("処理を中止しました。")
+        return translations
 
     # バッチに分割して処理
     total_batches = (len(zh_messages) + batch_size - 1) // batch_size
@@ -418,9 +819,13 @@ def main():
     parser.add_argument('--api-key', help='Google API Key (Gemini用)。環境変数 GOOGLE_API_KEY も使用可能')
     parser.add_argument('--timeout', type=int, default=180, help='Ollamaリクエストのタイムアウト秒数 (デフォルト: 180)')
     parser.add_argument('--list-models', action='store_true', help='利用可能なモデル一覧を表示')
-    parser.add_argument('--translation-file', '-t', default=None, 
+    parser.add_argument('--translation-file', '-t', default=None,
                        help='翻訳ファイル（export/merge用）')
-    
+    parser.add_argument('--detailed', action='store_true',
+                       help='詳細翻訳モード（言語学習向け、単語解説・ニュアンス分析・返信案を含む）')
+    parser.add_argument('--count', '--limit', '-n', type=int, default=None,
+                       help='処理する中国語メッセージの最大件数（テスト用）')
+
     args = parser.parse_args()
     
     # モデル一覧表示
@@ -459,13 +864,38 @@ def main():
     elif args.backend == 'ollama':
         # Ollamaで翻訳
         zh_messages = [m for m in messages if m.get("lang") == "zh" and m.get("type") == "text"]
-        print(f"翻訳対象: {len(zh_messages)}件")
-        
-        for m in tqdm(zh_messages, desc="翻訳中"):
-            translation = translate_with_ollama(m["text"], args.model, args.timeout)
-            print(f"翻訳: {m['text']} -> {translation}")
-            if translation:
-                m["text_ja"] = translation
+
+        # 件数制限
+        if args.count is not None:
+            print(f"翻訳対象: {len(zh_messages)}件中、最初の{args.count}件を処理")
+            zh_messages = zh_messages[:args.count]
+        else:
+            print(f"翻訳対象: {len(zh_messages)}件")
+
+        if args.detailed:
+            # 詳細翻訳モード - 確認プロンプト
+            if not confirm_translation(zh_messages, detailed=True, model=args.model):
+                print("処理を中止しました。")
+                sys.exit(0)
+
+            for m in tqdm(zh_messages, desc="詳細翻訳中"):
+                # 簡易翻訳（後方互換性のため）
+                translation = translate_with_ollama(m["text"], args.model, args.timeout)
+                if translation:
+                    m["text_ja"] = translation
+
+                # 詳細翻訳
+                detailed = translate_with_ollama_detailed(m["text"], args.model, args.timeout)
+                if detailed:
+                    m["text_ja_detailed"] = detailed
+        else:
+            # 簡易翻訳モード
+            for m in tqdm(zh_messages, desc="翻訳中"):
+                translation = translate_with_ollama(m["text"], args.model, args.timeout)
+                print(f"翻訳: {m['text']} -> {translation}")
+                if translation:
+                    m["text_ja"] = translation
+
 
     elif args.backend == 'gemini':
         # Gemini APIで翻訳（通常API）
@@ -480,12 +910,39 @@ def main():
             model = 'gemini-2.0-flash'
 
         zh_messages = [m for m in messages if m.get("lang") == "zh" and m.get("type") == "text"]
-        print(f"翻訳対象: {len(zh_messages)}件 (Gemini通常API: {model})")
 
-        for m in tqdm(zh_messages, desc="翻訳中"):
-            translation = translate_with_gemini(m["text"], api_key, model)
-            if translation:
-                m["text_ja"] = translation
+        # 件数制限
+        if args.count is not None:
+            original_count = len(zh_messages)
+            zh_messages = zh_messages[:args.count]
+            print(f"翻訳対象: {original_count}件中、最初の{args.count}件を処理")
+
+        if args.detailed:
+            # 詳細翻訳モード - 確認プロンプト
+            if not confirm_translation(zh_messages, detailed=True, model=model):
+                print("処理を中止しました。")
+                sys.exit(0)
+
+            for m in tqdm(zh_messages, desc="詳細翻訳中"):
+                # 簡易翻訳（後方互換性のため）
+                translation = translate_with_gemini(m["text"], api_key, model)
+                if translation:
+                    m["text_ja"] = translation
+
+                # 詳細翻訳
+                detailed = translate_with_gemini_detailed(m["text"], api_key, model)
+                if detailed:
+                    m["text_ja_detailed"] = detailed
+        else:
+            # 簡易翻訳モード - 確認プロンプト
+            if not confirm_translation(zh_messages, detailed=False, model=model):
+                print("処理を中止しました。")
+                sys.exit(0)
+
+            for m in tqdm(zh_messages, desc="翻訳中"):
+                translation = translate_with_gemini(m["text"], api_key, model)
+                if translation:
+                    m["text_ja"] = translation
 
     elif args.backend == 'gemini-batch':
         # Gemini Batch APIで翻訳（50%割引）
@@ -505,7 +962,8 @@ def main():
             api_key=api_key,
             model=model,
             batch_size=args.batch_size,
-            poll_interval=args.poll_interval
+            poll_interval=args.poll_interval,
+            max_count=args.count
         )
 
         # 翻訳結果をメッセージにマージ

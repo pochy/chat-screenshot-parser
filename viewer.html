@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WeChat 翻訳ビューワー</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: #f5f5f5;
+            color: #333;
+        }
+
+        .header {
+            background: #2c3e50;
+            color: white;
+            padding: 1rem 2rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .header h1 {
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .file-input-container {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+            margin-top: 0.5rem;
+        }
+
+        .file-input-container input[type="file"] {
+            flex: 1;
+            padding: 0.5rem;
+            background: white;
+            border-radius: 4px;
+            border: none;
+        }
+
+        .quick-load {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .quick-load-btn {
+            padding: 0.5rem 1rem;
+            background: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+
+        .quick-load-btn:hover {
+            background: #2980b9;
+        }
+
+        .container {
+            display: flex;
+            height: calc(100vh - 120px);
+        }
+
+        .sidebar {
+            width: 350px;
+            background: white;
+            border-right: 1px solid #ddd;
+            overflow-y: auto;
+            padding: 1rem;
+        }
+
+        .filter-section {
+            margin-bottom: 1rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid #eee;
+        }
+
+        .filter-section label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        .filter-section input,
+        .filter-section select {
+            width: 100%;
+            padding: 0.5rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }
+
+        .stats {
+            background: #ecf0f1;
+            padding: 0.75rem;
+            border-radius: 4px;
+            margin-bottom: 1rem;
+            font-size: 0.85rem;
+        }
+
+        .stats div {
+            margin-bottom: 0.25rem;
+        }
+
+        .message-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .message-item {
+            padding: 0.75rem;
+            background: #f8f9fa;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+            border-left: 3px solid transparent;
+        }
+
+        .message-item:hover {
+            background: #e9ecef;
+        }
+
+        .message-item.active {
+            background: #d4edff;
+            border-left-color: #3498db;
+        }
+
+        .message-item.has-detailed {
+            background: #e8f5e9;
+        }
+
+        .message-item.has-detailed.active {
+            background: #c8e6c9;
+            border-left-color: #4caf50;
+        }
+
+        .message-item-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 0.25rem;
+            font-size: 0.85rem;
+        }
+
+        .message-id {
+            font-weight: 600;
+            color: #555;
+        }
+
+        .message-lang {
+            padding: 0.1rem 0.4rem;
+            background: #3498db;
+            color: white;
+            border-radius: 3px;
+            font-size: 0.75rem;
+        }
+
+        .message-lang.zh {
+            background: #e74c3c;
+        }
+
+        .message-preview {
+            font-size: 0.9rem;
+            color: #666;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .content {
+            flex: 1;
+            padding: 2rem;
+            overflow-y: auto;
+            background: white;
+        }
+
+        .content.empty {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #999;
+            font-size: 1.2rem;
+        }
+
+        .message-detail {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .detail-header {
+            background: #ecf0f1;
+            padding: 1rem;
+            border-radius: 4px;
+            margin-bottom: 2rem;
+        }
+
+        .detail-header h2 {
+            font-size: 1.3rem;
+            margin-bottom: 0.5rem;
+            color: #2c3e50;
+        }
+
+        .detail-meta {
+            display: flex;
+            gap: 1rem;
+            font-size: 0.9rem;
+            color: #666;
+        }
+
+        .section {
+            margin-bottom: 2rem;
+        }
+
+        .section-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #2c3e50;
+            margin-bottom: 0.75rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid #3498db;
+        }
+
+        .simple-translation {
+            background: #e3f2fd;
+            padding: 1rem;
+            border-radius: 4px;
+            font-size: 1rem;
+            line-height: 1.6;
+        }
+
+        .detailed-translation {
+            background: #f9f9f9;
+            padding: 1.5rem;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+        }
+
+        .detailed-translation h2 {
+            color: #2c3e50;
+            font-size: 1.3rem;
+            margin-top: 2rem;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid #e74c3c;
+        }
+
+        .detailed-translation h2:first-child {
+            margin-top: 0;
+        }
+
+        .detailed-translation table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+            font-size: 0.9rem;
+        }
+
+        .detailed-translation th,
+        .detailed-translation td {
+            border: 1px solid #ddd;
+            padding: 0.75rem;
+            text-align: left;
+        }
+
+        .detailed-translation th {
+            background: #34495e;
+            color: white;
+            font-weight: 600;
+        }
+
+        .detailed-translation tr:nth-child(even) {
+            background: #f5f5f5;
+        }
+
+        .detailed-translation ul,
+        .detailed-translation ol {
+            margin-left: 1.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .detailed-translation li {
+            margin-bottom: 0.5rem;
+            line-height: 1.6;
+        }
+
+        .detailed-translation p {
+            margin-bottom: 1rem;
+            line-height: 1.6;
+        }
+
+        .detailed-translation strong {
+            color: #e74c3c;
+        }
+
+        .detailed-translation hr {
+            border: none;
+            border-top: 1px solid #ddd;
+            margin: 1.5rem 0;
+        }
+
+        .no-detailed {
+            color: #999;
+            font-style: italic;
+            padding: 1rem;
+            background: #f5f5f5;
+            border-radius: 4px;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                width: 100%;
+                height: 300px;
+            }
+
+            .content {
+                height: calc(100vh - 420px);
+            }
+        }
+
+        .loading {
+            text-align: center;
+            padding: 2rem;
+            color: #999;
+        }
+
+        .error {
+            background: #ffebee;
+            color: #c62828;
+            padding: 1rem;
+            border-radius: 4px;
+            margin: 1rem 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📝 WeChat 翻訳ビューワー</h1>
+        <div class="file-input-container">
+            <input type="file" id="fileInput" accept=".jsonl" />
+            <div class="quick-load">
+                <button class="quick-load-btn" onclick="loadFile('output/test_detailed.jsonl')">test_detailed.jsonl</button>
+                <button class="quick-load-btn" onclick="loadFile('output/detailed.jsonl')">detailed.jsonl</button>
+                <button class="quick-load-btn" onclick="loadFile('output/translated.jsonl')">translated.jsonl</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="sidebar">
+            <div class="filter-section">
+                <label for="searchInput">検索</label>
+                <input type="text" id="searchInput" placeholder="メッセージを検索..." />
+            </div>
+            <div class="filter-section">
+                <label for="langFilter">言語フィルタ</label>
+                <select id="langFilter">
+                    <option value="all">すべて</option>
+                    <option value="zh">中国語のみ</option>
+                    <option value="ja">日本語のみ</option>
+                </select>
+            </div>
+            <div class="filter-section">
+                <label for="detailedFilter">詳細翻訳フィルタ</label>
+                <select id="detailedFilter">
+                    <option value="all">すべて</option>
+                    <option value="detailed">詳細翻訳あり</option>
+                    <option value="simple">簡易翻訳のみ</option>
+                </select>
+            </div>
+            <div class="stats" id="stats"></div>
+            <div class="message-list" id="messageList"></div>
+        </div>
+        <div class="content empty" id="content">
+            <div>ファイルを選択してください</div>
+        </div>
+    </div>
+
+    <script>
+        let messages = [];
+        let filteredMessages = [];
+        let currentMessageId = null;
+
+        // ファイル入力の変更イベント
+        document.getElementById('fileInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                readFile(file);
+            }
+        });
+
+        // 検索・フィルタのイベント
+        document.getElementById('searchInput').addEventListener('input', filterMessages);
+        document.getElementById('langFilter').addEventListener('change', filterMessages);
+        document.getElementById('detailedFilter').addEventListener('change', filterMessages);
+
+        // ファイル読み込み（ファイルアップロード）
+        function readFile(file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const content = e.target.result;
+                parseJSONL(content);
+            };
+            reader.readAsText(file);
+        }
+
+        // ファイル読み込み（パス指定）
+        async function loadFile(path) {
+            try {
+                document.getElementById('content').innerHTML = '<div class="loading">読み込み中...</div>';
+                const response = await fetch(path);
+                if (!response.ok) {
+                    throw new Error(`ファイルが見つかりません: ${path}`);
+                }
+                const content = await response.text();
+                parseJSONL(content);
+            } catch (error) {
+                document.getElementById('content').innerHTML = `<div class="error">エラー: ${error.message}</div>`;
+            }
+        }
+
+        // JSONL パース
+        function parseJSONL(content) {
+            try {
+                messages = content.trim().split('\n')
+                    .filter(line => line.trim())
+                    .map(line => JSON.parse(line));
+
+                filterMessages();
+                updateStats();
+
+                if (messages.length > 0) {
+                    showMessage(messages[0].id);
+                }
+            } catch (error) {
+                document.getElementById('content').innerHTML = `<div class="error">JSONLパースエラー: ${error.message}</div>`;
+            }
+        }
+
+        // メッセージフィルタリング
+        function filterMessages() {
+            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+            const langFilter = document.getElementById('langFilter').value;
+            const detailedFilter = document.getElementById('detailedFilter').value;
+
+            filteredMessages = messages.filter(msg => {
+                // 言語フィルタ
+                if (langFilter !== 'all' && msg.lang !== langFilter) return false;
+
+                // 詳細翻訳フィルタ
+                if (detailedFilter === 'detailed' && !msg.text_ja_detailed) return false;
+                if (detailedFilter === 'simple' && msg.text_ja_detailed) return false;
+
+                // 検索フィルタ
+                if (searchTerm) {
+                    const searchableText = [
+                        msg.text || '',
+                        msg.text_ja || '',
+                        msg.id || ''
+                    ].join(' ').toLowerCase();
+
+                    if (!searchableText.includes(searchTerm)) return false;
+                }
+
+                return true;
+            });
+
+            renderMessageList();
+            updateStats();
+        }
+
+        // 統計情報更新
+        function updateStats() {
+            const zhCount = messages.filter(m => m.lang === 'zh').length;
+            const jaCount = messages.filter(m => m.lang === 'ja').length;
+            const detailedCount = messages.filter(m => m.text_ja_detailed).length;
+
+            document.getElementById('stats').innerHTML = `
+                <div><strong>総メッセージ数:</strong> ${messages.length}件</div>
+                <div><strong>表示中:</strong> ${filteredMessages.length}件</div>
+                <div><strong>中国語:</strong> ${zhCount}件 / <strong>日本語:</strong> ${jaCount}件</div>
+                <div><strong>詳細翻訳:</strong> ${detailedCount}件</div>
+            `;
+        }
+
+        // メッセージリスト表示
+        function renderMessageList() {
+            const listEl = document.getElementById('messageList');
+
+            if (filteredMessages.length === 0) {
+                listEl.innerHTML = '<div class="no-detailed">メッセージがありません</div>';
+                return;
+            }
+
+            listEl.innerHTML = filteredMessages.map(msg => {
+                const hasDetailed = msg.text_ja_detailed ? 'has-detailed' : '';
+                const isActive = msg.id === currentMessageId ? 'active' : '';
+                const preview = msg.text ? msg.text.substring(0, 30) : 'テキストなし';
+
+                return `
+                    <div class="message-item ${hasDetailed} ${isActive}" onclick="showMessage('${msg.id}')">
+                        <div class="message-item-header">
+                            <span class="message-id">${msg.id}</span>
+                            <span class="message-lang ${msg.lang}">${msg.lang}</span>
+                        </div>
+                        <div class="message-preview">${preview}</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // メッセージ詳細表示
+        function showMessage(messageId) {
+            currentMessageId = messageId;
+            const msg = messages.find(m => m.id === messageId);
+
+            if (!msg) return;
+
+            renderMessageList(); // active状態を更新
+
+            const contentEl = document.getElementById('content');
+            contentEl.className = 'content';
+
+            let html = `
+                <div class="message-detail">
+                    <div class="detail-header">
+                        <h2>${msg.id}</h2>
+                        <div class="detail-meta">
+                            <span><strong>言語:</strong> ${msg.lang}</span>
+                            <span><strong>話者:</strong> ${msg.speaker || 'N/A'}</span>
+                            ${msg.timestamp ? `<span><strong>日時:</strong> ${msg.timestamp}</span>` : ''}
+                            ${msg.confidence ? `<span><strong>信頼度:</strong> ${(msg.confidence * 100).toFixed(1)}%</span>` : ''}
+                        </div>
+                    </div>
+
+                    <div class="section">
+                        <div class="section-title">原文</div>
+                        <div class="simple-translation">${escapeHtml(msg.text || 'テキストなし')}</div>
+                    </div>
+            `;
+
+            if (msg.text_ja) {
+                html += `
+                    <div class="section">
+                        <div class="section-title">簡易翻訳</div>
+                        <div class="simple-translation">${escapeHtml(msg.text_ja)}</div>
+                    </div>
+                `;
+            }
+
+            if (msg.text_ja_detailed) {
+                html += `
+                    <div class="section">
+                        <div class="section-title">詳細翻訳（学習用）</div>
+                        <div class="detailed-translation">
+                            ${marked.parse(msg.text_ja_detailed)}
+                        </div>
+                    </div>
+                `;
+            } else {
+                html += `
+                    <div class="section">
+                        <div class="section-title">詳細翻訳</div>
+                        <div class="no-detailed">詳細翻訳はありません</div>
+                    </div>
+                `;
+            }
+
+            html += '</div>';
+            contentEl.innerHTML = html;
+        }
+
+        // HTMLエスケープ
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // キーボードショートカット
+        document.addEventListener('keydown', function(e) {
+            if (filteredMessages.length === 0) return;
+
+            const currentIndex = filteredMessages.findIndex(m => m.id === currentMessageId);
+
+            if (e.key === 'ArrowDown' || e.key === 'j') {
+                e.preventDefault();
+                if (currentIndex < filteredMessages.length - 1) {
+                    showMessage(filteredMessages[currentIndex + 1].id);
+                }
+            } else if (e.key === 'ArrowUp' || e.key === 'k') {
+                e.preventDefault();
+                if (currentIndex > 0) {
+                    showMessage(filteredMessages[currentIndex - 1].id);
+                }
+            }
+        });
+    </script>
+</body>
+</html>

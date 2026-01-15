@@ -268,12 +268,12 @@ python analyze.py --input ./output/refined.jsonl --json > stats.json
 
 #### 翻訳バックエンドの比較
 
-| バックエンド | コスト | 速度 | プライバシー | 用途 |
-|-------------|--------|------|-------------|------|
-| `ollama` | 無料 | GPU依存 | ローカル完結 | プライバシー重視 |
-| `gemini` | 有料 | 高速 | クラウド送信 | リアルタイム処理 |
-| `gemini-batch` | **50%割引** | 非同期 | クラウド送信 | 大量翻訳（推奨） |
-| `export` | - | - | - | 外部ツール連携 |
+| バックエンド | コスト | 速度 | プライバシー | 詳細翻訳 | 用途 |
+|-------------|--------|------|-------------|---------|------|
+| `ollama` | 無料 | GPU依存 | ローカル完結 | ❌ | プライバシー重視 |
+| `gemini` | 有料 | 高速 | クラウド送信 | ✅ | リアルタイム処理、学習用 |
+| `gemini-batch` | **50%割引** | 非同期 | クラウド送信 | ❌ | 大量翻訳（推奨） |
+| `export` | - | - | - | ❌ | 外部ツール連携 |
 
 #### Ollama使用（ローカルLLM・無料）
 
@@ -290,20 +290,148 @@ python translate.py \
 ```bash
 # 環境変数 GOOGLE_API_KEY を設定するか、--api-key で指定
 export GOOGLE_API_KEY="your_api_key_here"
+
+# コスト最安（gemini-2.5-flash-lite）
+python translate.py \
+    --input ./output/refined.jsonl \
+    --output ./output/translated.jsonl \
+    --backend gemini \
+    --model gemini-2.5-flash-lite
+
+# バランス重視（gemini-2.0-flash）
 python translate.py \
     --input ./output/refined.jsonl \
     --output ./output/translated.jsonl \
     --backend gemini \
     --model gemini-2.0-flash
+
+# テスト実行（最初の10件のみ処理）
+python translate.py \
+    --input ./output/refined.jsonl \
+    --output ./output/test_translated.jsonl \
+    --backend gemini \
+    --model gemini-2.5-flash-lite \
+    --count 10
 ```
+
+**実行時の確認プロンプト例:**
+```
+============================================================
+【簡易翻訳モード】処理実行の確認
+============================================================
+モデル: gemini-2.5-flash-lite
+送信メッセージ数: 100件
+送信データサイズ: 2.02 KB
+推定料金: $0.0003 (約0円)
+推定トークン: 入力 5900, 出力 3000
+============================================================
+続行しますか？ [Y/n]:
+```
+
+Enterキーまたは `Y` で処理を開始、`n` でキャンセルします。
+
+#### 詳細翻訳モード（言語学習向け）
+
+中国語メッセージの詳細な解説を生成します。単語分解、ピンイン、HSKレベル、ニュアンス分析、返信提案を含む学習用フォーマットです。
+
+```bash
+# 詳細翻訳モード（コスト重視 - 推奨）
+export GOOGLE_API_KEY="your_api_key_here"
+python translate.py \
+    --input ./output/refined.jsonl \
+    --output ./output/detailed.jsonl \
+    --backend gemini \
+    --detailed \
+    --model gemini-2.5-flash-lite
+
+# 詳細翻訳モード（バランス重視）
+python translate.py \
+    --input ./output/refined.jsonl \
+    --output ./output/detailed.jsonl \
+    --backend gemini \
+    --detailed \
+    --model gemini-2.0-flash
+
+# テスト実行（最初の10件のみ処理）
+python translate.py \
+    --input ./output/refined.jsonl \
+    --output ./output/test_detailed.jsonl \
+    --backend gemini \
+    --detailed \
+    --model gemini-2.5-flash-lite \
+    --count 10
+```
+
+**出力内容:**
+- 原文（中国語テキスト）
+- 自然な日本語訳
+- 単語・フレーズの詳細解説（ピンイン、HSK級、文法解説）
+- 全体のニュアンス分析（文脈・感情・関係性）
+- 3パターンの返信提案（優しい/冗談混じり/包容的）
+
+**出力例:**
+```markdown
+## 原文
+
+晚饭吃点好吃的吧
+
+## 日本語の意味（自然訳）
+
+晩ご飯は何か美味しいものを食べようよ。
+
+## 中国語の分解解説
+
+| 単語 | 品詞 | ピンイン | 意味 | 新HSK | 解説 |
+| :-- | :---- | :---------- | :------- | :--- | :----------- |
+| 晚饭 | 名詞 | wǎnfàn | 晩ご飯 | 2 | 夜に食べる食事。夕食。 |
+| 吃 | 動詞 | chī | 食べる | 1 | 基本的な動詞。食事をする行為。 |
+...
+
+## 全体のニュアンス
+
+このメッセージは、相手に晩ご飯を一緒に食べに行こうと提案する内容です。
+
+...
+
+## 日本語での返事案（3パターン）
+
+① 優しい・恋人らしい
+うん、いいね！何が食べたい？一緒に考えようか？
+
+② 少し冗談混じり・軽め
+おっ、いいね！じゃあ、今日は奮発して高級中華でも行く？(笑)
+
+③ 包容・安心感のある感じ
+そうだね、何か美味しいもの食べたいね。ゆっくり話しながら、何にするか決めようか。
+```
+
+**コスト:**
+- **gemini-2.5-flash-lite**: 100メッセージで約$0.09（約14円） ← 推奨
+- **gemini-2.0-flash**: 100メッセージで約$0.20（約32円）
+- 通常翻訳の約20倍のトークンを消費
+
+**注意:**
+- 詳細翻訳は `gemini` バックエンドのみ対応
+- `gemini-batch` では使用不可（簡易翻訳のみ）
+- 出力は `text_ja_detailed` フィールドに Markdown 形式で格納
+- 処理実行前に確認プロンプトが表示されます（送信データサイズ・推定料金を確認）
 
 #### Gemini バッチAPI（50%割引・大量翻訳推奨）
 
 大量のメッセージを翻訳する場合は、バッチAPIが最もコスト効率が良いです。
 
 ```bash
-# バッチAPI使用（50%割引・推奨設定）
+# バッチAPI使用（50%割引・コスト最安）
 export GOOGLE_API_KEY="your_api_key_here"
+python translate.py \
+    --input ./output/refined.jsonl \
+    --output ./output/translated.jsonl \
+    --backend gemini-batch \
+    --model gemini-2.5-flash-lite \
+    --batch-size 1000 \
+    --poll-interval 60
+
+# バッチAPI使用（50%割引・バランス重視）
 python translate.py \
     --input ./output/refined.jsonl \
     --output ./output/translated.jsonl \
@@ -311,9 +439,21 @@ python translate.py \
     --model gemini-2.0-flash \
     --batch-size 1000 \
     --poll-interval 60
+
+# テスト実行（最初の100件のみ処理）
+python translate.py \
+    --input ./output/refined.jsonl \
+    --output ./output/test_batch.jsonl \
+    --backend gemini-batch \
+    --model gemini-2.5-flash-lite \
+    --batch-size 100 \
+    --poll-interval 30 \
+    --count 100
 ```
 
-**2026-01-15 改善内容:**
+**改善内容:**
+- ✅ **確認プロンプト**: 処理実行前に送信データサイズ・推定料金を表示して確認
+- ✅ **処理件数制限**: `--count` オプションでテスト実行が可能
 - ✅ **リモートファイルの自動削除**: バッチ処理完了後、Google Files API にアップロードされたファイルを自動削除
 - ✅ **バッチ統計情報の表示**: 成功/失敗件数をリアルタイム表示
 - ✅ **モデル名の正規化**: プレフィックスの重複を自動回避
@@ -353,21 +493,58 @@ pip install google-genai
 
 #### 料金目安
 
+**簡易翻訳（通常モード）:**
+
 **10,000件の中国語メッセージの場合:**
 
 | バックエンド | モデル | 推定料金 |
 |-------------|--------|----------|
+| `gemini` | gemini-2.5-flash-lite | 約$0.04（約6円） |
 | `gemini` | gemini-2.0-flash | 約$0.15（約24円） |
-| `gemini-batch` | gemini-2.0-flash | **約$0.08（約12円）** |
+| `gemini-batch` | gemini-2.5-flash-lite | **約$0.02（約3円）** ← 最安 |
+| `gemini-batch` | gemini-2.0-flash | 約$0.08（約12円） |
 
 **refined.jsonl の実データ（12,897件）の場合:**
 
 | バックエンド | モデル | 推定料金 |
 |-------------|--------|----------|
+| `gemini` | gemini-2.5-flash-lite | 約$0.05（約8円） |
 | `gemini` | gemini-2.0-flash | 約$0.08（約13円） |
-| `gemini-batch` | gemini-2.0-flash | **約$0.04（約6円）** ← 推奨 |
+| `gemini-batch` | gemini-2.5-flash-lite | **約$0.025（約4円）** ← 最安・推奨 |
+| `gemini-batch` | gemini-2.0-flash | 約$0.04（約6円） |
+
+**簡易翻訳の推奨モデル:**
+- **コスト最優先**: `gemini-2.5-flash-lite` + バッチAPI
+- **バランス**: `gemini-2.0-flash` + バッチAPI（実績あり）
 
 ※ 平均文字数11文字/メッセージで計算
+
+**詳細翻訳（--detailed使用時）:**
+
+| メッセージ数 | モデル | 推定料金 |
+|-------------|--------|----------|
+| 100件 | gemini-2.0-flash | 約$0.20（約32円） |
+| 1,000件 | gemini-2.0-flash | 約$2.00（約320円） |
+| 10,000件 | gemini-2.0-flash | 約$20.00（約3,200円） |
+
+※ 詳細翻訳は通常翻訳の約20倍のトークンを消費
+
+**モデル別料金比較（詳細翻訳・10,000件の場合）:**
+
+| モデル | 入力料金 | 出力料金 | 推定料金（標準） | 推定料金（バッチ） | 特徴 |
+|--------|---------|---------|----------------|------------------|------|
+| gemini-2.0-flash | $0.015/1M | $0.060/1M | 約$20.00（約3,200円） | 約$10.00（約1,600円） | バランス型 |
+| gemini-2.5-flash-lite | $0.10/1M | $0.40/1M | **約$8.83（約1,413円）** | **約$4.42（約707円）** | **最安・推奨** |
+| gemini-2.5-flash | $0.30/1M | $2.50/1M | 約$52.49（約8,398円） | 約$26.25（約4,199円） | 高品質 |
+| gemini-3-flash-preview | $0.50/1M | $3.00/1M | 約$64.15（約10,264円） | 約$32.08（約5,133円） | 最新 |
+
+**推奨モデル:**
+- **コスト重視**: `gemini-2.5-flash-lite` - 最も安価で詳細翻訳に十分な品質
+- **バランス重視**: `gemini-2.0-flash` - 実績があり安定した品質
+- **品質重視**: `gemini-2.5-flash` または `gemini-3-flash-preview` - より高度な分析が必要な場合
+
+※ 1ドル=160円で計算
+※ 平均20文字/メッセージ、入力830トークン、出力2000トークンで計算
 
 #### 外部翻訳用にエクスポート
 
@@ -398,6 +575,68 @@ python cleanup_remote_files.py --delete-all
 - 詳細ガイド: `CLEANUP_GUIDE.md`
 
 **注意:** Google Files API にアップロードされたファイルは48時間後に自動削除されますが、手動削除により即座にストレージを解放できます。
+
+### Step 5: 翻訳結果の表示
+
+翻訳結果（特に詳細翻訳）をブラウザで見やすく表示できるHTMLビューワーを用意しています。
+
+#### ビューワーの起動
+
+```bash
+# プロジェクトディレクトリで簡易HTTPサーバーを起動
+python -m http.server 8000
+
+# ブラウザで開く
+# http://localhost:8000/viewer.html
+```
+
+#### 機能
+
+**データ読み込み:**
+- ファイルアップロード（ドラッグ&ドロップ対応）
+- クイックロードボタン（test_detailed.jsonl、detailed.jsonl、translated.jsonl）
+
+**表示機能:**
+- メッセージ一覧と詳細表示の2ペイン構成
+- 原文、簡易翻訳、詳細翻訳を見やすく表示
+- 詳細翻訳のMarkdown表示（表、リスト、太字対応）
+
+**フィルタ・検索:**
+- テキスト検索
+- 言語フィルタ（全て/中国語のみ/日本語のみ）
+- 詳細翻訳フィルタ（全て/詳細翻訳あり/簡易翻訳のみ）
+
+**キーボードショートカット:**
+- `↓` または `j`: 次のメッセージ
+- `↑` または `k`: 前のメッセージ
+
+#### 使用例
+
+```bash
+# 1. 詳細翻訳を生成
+python translate.py \
+    --input ./output/refined.jsonl \
+    --output ./output/detailed.jsonl \
+    --backend gemini \
+    --detailed \
+    --model gemini-2.5-flash-lite \
+    --count 10
+
+# 2. HTTPサーバー起動
+python -m http.server 8000
+
+# 3. ブラウザでアクセス
+# http://localhost:8000/viewer.html
+
+# 4. 「test_detailed.jsonl」または「detailed.jsonl」ボタンをクリック
+```
+
+**スクリーンショット例:**
+- 左側: メッセージ一覧（検索・フィルタ機能付き）
+- 右側: 選択したメッセージの詳細表示
+  - 原文
+  - 簡易翻訳
+  - 詳細翻訳（単語分解、ニュアンス分析、返信案）
 
 ### 一括実行
 
@@ -432,6 +671,7 @@ JSONL 形式で 1 行 1 メッセージ：
 | `naturalness` | 日本語の自然さスコア（0-1）   | `1.0`                        |
 | `needs_review`| 確認が必要か                  | `true`                       |
 | `text_ja`     | 日本語翻訳（翻訳後）          |                              |
+| `text_ja_detailed` | 詳細翻訳（Markdown形式、--detailed使用時） | Markdown形式の学習用解説 |
 
 ## ディレクトリ構成
 
@@ -564,21 +804,41 @@ python -c "import paddle; paddle.utils.run_check()"
 3. **絵文字の認識**: 絵文字は認識されないか、文字化けすることがある
 4. **一部の誤字**: 類似した漢字（健康 → 建康、炭酸 → 提酸）が誤認識されることがある
 
-## 🆕 最近の改善（2026-01-15）
+## 🆕 最近の改善
 
-### translate.py の改善
+### 2026-01-15: translate.py の改善
 
-1. **リモートファイルの自動削除** (優先度: 高)
+1. **詳細翻訳モードの追加** (NEW!)
+   - 中国語学習に最適化された詳細解説形式
+   - 単語分解（ピンイン、HSKレベル、文法解説）
+   - 全体のニュアンス分析（感情・関係性・文化的背景）
+   - 3パターンの返信提案（優しい/冗談混じり/包容的）
+   - 実装箇所: translate.py:163-344, translate.py:670-689
+   - 使用方法: `--detailed` フラグを追加
+
+2. **確認プロンプトの追加** (NEW!)
+   - 処理実行前に送信データサイズ・推定料金を表示
+   - Enterキーで続行、nでキャンセル
+   - 誤操作による不要なコスト発生を防止
+   - 実装箇所: translate.py:118-163
+
+3. **処理件数制限機能の追加** (NEW!)
+   - `--count` オプションで処理する中国語メッセージ数を制限
+   - テスト実行やコスト管理に便利
+   - 例: `--count 10` で最初の10件のみ処理
+   - 実装箇所: translate.py:609-610
+
+4. **リモートファイルの自動削除** (優先度: 高)
    - Google Files API にアップロードされたファイルを自動削除
    - ストレージクォータの節約とリソース管理の適正化
    - 実装箇所: translate.py:336-341
 
-2. **バッチ統計情報の表示** (優先度: 中)
+5. **バッチ統計情報の表示** (優先度: 中)
    - 成功/失敗件数をリアルタイム表示
    - 問題の早期発見が可能
    - 実装箇所: translate.py:279-287
 
-3. **モデル名の正規化** (優先度: 低)
+6. **モデル名の正規化** (優先度: 低)
    - `models/` プレフィックスの重複を自動回避
    - より堅牢なコード
    - 実装箇所: translate.py:246-249

@@ -249,6 +249,29 @@ python refine.py \
     --llm-model qwen2.5:7b
 ```
 
+### Step 3.5: 日毎ファイル分割（オプション）
+
+大量の会話データを日付ごとに分割して管理・翻訳します。
+
+```bash
+python split_by_date.py \
+    --input ./output/refined.jsonl \
+    --output-dir ./output/daily
+```
+
+**出力例:**
+```
+./output/daily/2025-05-25.jsonl  (233件)
+./output/daily/2025-05-26.jsonl  (169件)
+./output/daily/2025-06-18.jsonl  (371件)
+...
+```
+
+**メリット:**
+- 日付ごとの管理が容易
+- 特定期間のみを翻訳可能
+- 大量データの段階的処理
+
 ### Step 4: 分析
 
 ```bash
@@ -262,7 +285,7 @@ python analyze.py --input ./output/refined.jsonl --search "炭酸"
 python analyze.py --input ./output/refined.jsonl --json > stats.json
 ```
 
-### Step 4: 翻訳（オプション）
+### Step 5: 翻訳（オプション）
 
 中国語メッセージに日本語翻訳を追加します。
 
@@ -277,6 +300,7 @@ python analyze.py --input ./output/refined.jsonl --json > stats.json
 
 #### Ollama使用（ローカルLLM・無料）
 
+**単一ファイル処理:**
 ```bash
 python translate.py \
     --input ./output/refined.jsonl \
@@ -284,6 +308,28 @@ python translate.py \
     --backend ollama \
     --model qwen2.5:7b
 ```
+
+**ディレクトリ処理（日毎ファイル一括翻訳）:**
+```bash
+# 全日付を処理
+python translate.py \
+    --input-dir ./output/daily \
+    --output-dir ./output/translated \
+    --backend ollama \
+    --model qwen2.5:7b
+
+# 最初の10日分のみ処理（テスト用）
+python translate.py \
+    --input-dir ./output/daily \
+    --output-dir ./output/translated \
+    --backend ollama \
+    --model qwen2.5:7b \
+    --count 10
+```
+
+> [!NOTE]
+> ディレクトリ処理時、`--count` オプションは**日数**で制限します（例: `--count 10` で最初の10日分のファイルを処理）。単一ファイル処理時は従来通り**メッセージ数**で制限します。
+
 
 #### Gemini 通常API（リアルタイム）
 
@@ -679,9 +725,10 @@ JSONL 形式で 1 行 1 メッセージ：
 wechat_extractor/
 ├── extract.py                  # メイン抽出スクリプト（デュアルOCR）
 ├── dedupe.py                   # 重複除去スクリプト
-├── analyze.py                  # 分析・統計・検索スクリプト
 ├── refine.py                   # 品質補正・評価スクリプト
-├── translate.py                # 翻訳追加スクリプト（改善版）
+├── split_by_date.py            # 日毎ファイル分割スクリプト（新規）
+├── analyze.py                  # 分析・統計・検索スクリプト
+├── translate.py                # 翻訳追加スクリプト（ディレクトリ処理対応）
 ├── cleanup_remote_files.py     # Google Files API クリーンアップ（新規）
 ├── run_pipeline.sh             # 一括実行スクリプト
 ├── config.yaml                 # 設定ファイル
@@ -701,7 +748,14 @@ your_project/
     ├── conversations.jsonl   # 抽出結果（生データ）
     ├── deduped.jsonl         # 重複除去後
     ├── refined.jsonl         # 補正後
-    ├── translated.jsonl      # 翻訳追加後
+    ├── daily/                # 日毎分割ファイル（新規）
+    │   ├── 2025-05-25.jsonl
+    │   ├── 2025-05-26.jsonl
+    │   └── ...
+    ├── translated/           # ディレクトリ翻訳結果（新規）
+    │   ├── 2025-05-25_translated.jsonl
+    │   ├── 2025-05-26_translated.jsonl
+    │   └── ...
     ├── checkpoint.json       # チェックポイント
     └── report.txt            # 分析レポート
 ```

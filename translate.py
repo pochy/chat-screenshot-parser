@@ -5,6 +5,7 @@
 ローカルLLM(Ollama等)またはバッチ処理用
 
 使用方法:
+    # 単一ファイル処理
     # Ollama使用(qwen2等の中国語対応モデル推奨)
     python translate.py --input ./output/conversations.jsonl --output ./output/translated.jsonl --backend ollama --model qwen2.5:7b
 
@@ -22,6 +23,11 @@
 
     # 翻訳なしで text_ja フィールドだけ追加(後で手動/他ツールで翻訳)
     python translate.py --input ./output/conversations.jsonl --output ./output/with_text_ja.jsonl --backend none
+    
+    # ディレクトリ処理（日毎に分割されたファイルを一括処理）
+    # --count オプションは日数で制限（例: --count 10 で最初の10日分を処理）
+    python translate.py --input-dir ./output/daily --output-dir ./output/translated --backend ollama --model qwen2.5:7b
+    python translate.py --input-dir ./output/daily --output-dir ./output/translated --backend ollama --model qwen2.5:7b --count 10
 """
 
 import argparse
@@ -806,10 +812,253 @@ def merge_translations(messages: list, translation_file: str) -> list:
     return messages
 
 
+def process_single_file(
+    input_file: Path,
+    output_file: Path,
+    backend: str,
+    model: str,
+    api_key: Optional[str],
+    detailed: bool,
+    timeout: int,
+    batch_size: int,
+    poll_interval: int,
+    count: Optional[int] = None
+) -> Tuple[int, int]:
+    """
+    単一ファイルを処理
+    
+    Returns:
+        (処理したメッセージ数, 翻訳したメッセージ数)
+    """
+    # メッセージ読み込み
+    messages = []
+    with open(input_file, 'r', encoding='utf-8') as f:
+        for line in f:
+            if line.strip():
+                messages.append(json.loads(line))
+    
+    total_messages = len(messages)
+    
+    if backend == 'export':
+        # 外部翻訳用にエクスポート
+        export_file = str(output_file).replace('.jsonl', '_to_translate.txt')
+        translate_batch_for_external(messages, export_file)
+        return total_messages, 0
+    
+    elif backend == 'none':
+        # 翻訳なし（text_jaフィールドを空で追加）
+        for m in messages:
+            if m.get("lang") == "zh" and m.get("type") == "text":
+                m["text_ja"] = ""
+        translated_count = 0
+    
+    elif backend == 'ollama':
+        # Ollamaで翻訳
+        zh_messages = [m for m in messages if m.get("lang") == "zh" and m.get("type") == "text"]
+        
+        # 件数制限（単一ファイル処理時はメッセージ数で制限）
+        if count is not None:
+            zh_messages = zh_messages[:count]
+        
+        if detailed:
+            for m in tqdm(zh_messages, desc="詳細翻訳中", leave=False):
+                # 簡易翻訳
+                translation = translate_with_ollama(m["text"], model, timeout)
+                if translation:
+                    m["text_ja"] = translation
+                
+                # 詳細翻訳
+                detailed_trans = translate_with_ollama_detailed(m["text"], model, timeout)
+                if detailed_trans:
+                    m["text_ja_detailed"] = detailed_trans
+        else:
+            for m in tqdm(zh_messages, desc="翻訳中", leave=False):
+                translation = translate_with_ollama(m["text"], model, timeout)
+                if translation:
+                    m["text_ja"] = translation
+        
+        translated_count = len([m for m in zh_messages if "text_ja" in m])
+    
+    elif backend == 'gemini':
+        # Gemini APIで翻訳
+        if not api_key:
+            print("エラー: Geminiを使用するには --api-key または環境変数 GOOGLE_API_KEY が必要です", file=sys.stderr)
+            sys.exit(1)
+        
+        # デフォルトモデル調整
+        if model == 'qwen2.5:7b':
+            model = 'gemini-2.0-flash'
+        
+        zh_messages = [m for m in messages if m.get("lang") == "zh" and m.get("type") == "text"]
+        
+        # 件数制限
+        if count is not None:
+            zh_messages = zh_messages[:count]
+        
+        if detailed:
+            for m in tqdm(zh_messages, desc="詳細翻訳中", leave=False):
+                # 簡易翻訳
+                translation = translate_with_gemini(m["text"], api_key, model)
+                if translation:
+                    m["text_ja"] = translation
+                
+                # 詳細翻訳
+                detailed_trans = translate_with_gemini_detailed(m["text"], api_key, model)
+                if detailed_trans:
+                    m["text_ja_detailed"] = detailed_trans
+        else:
+            for m in tqdm(zh_messages, desc="翻訳中", leave=False):
+                translation = translate_with_gemini(m["text"], api_key, model)
+                if translation:
+                    m["text_ja"] = translation
+        
+        translated_count = len([m for m in zh_messages if "text_ja" in m])
+    
+    elif backend == 'gemini-batch':
+        # Gemini Batch APIで翻訳
+        if not api_key:
+            print("エラー: Geminiを使用するには --api-key または環境変数 GOOGLE_API_KEY が必要です", file=sys.stderr)
+            sys.exit(1)
+        
+        # デフォルトモデル調整
+        if model == 'qwen2.5:7b':
+            model = 'gemini-2.0-flash'
+        
+        translations = translate_with_gemini_batch(
+            messages=messages,
+            api_key=api_key,
+            model=model,
+            batch_size=batch_size,
+            poll_interval=poll_interval,
+            max_count=count
+        )
+        
+        # 翻訳結果をマージ
+        for m in messages:
+            if m["id"] in translations:
+                m["text_ja"] = translations[m["id"]]
+        
+        translated_count = len(translations)
+    
+    else:
+        translated_count = 0
+    
+    # 出力
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_file, 'w', encoding='utf-8') as f:
+        for m in messages:
+            f.write(json.dumps(m, ensure_ascii=False) + '\n')
+    
+    return total_messages, translated_count
+
+
+def process_directory(args):
+    """
+    ディレクトリ内の複数ファイルを処理
+    """
+    input_dir = args.input_dir
+    output_dir = args.output_dir
+    
+    # 入力ディレクトリの存在確認
+    if not input_dir.exists():
+        print(f"エラー: 入力ディレクトリが見つかりません: {input_dir}", file=sys.stderr)
+        sys.exit(1)
+    
+    # JSONLファイルを検出してソート
+    jsonl_files = sorted(input_dir.glob('*.jsonl'))
+    
+    if not jsonl_files:
+        print(f"エラー: {input_dir} に .jsonl ファイルが見つかりません", file=sys.stderr)
+        sys.exit(1)
+    
+    # 日数制限（ディレクトリ処理時は --count で日数を制限）
+    if args.count is not None:
+        original_count = len(jsonl_files)
+        jsonl_files = jsonl_files[:args.count]
+        print(f"処理対象: {original_count}ファイル中、最初の{args.count}日分を処理")
+    else:
+        print(f"処理対象: {len(jsonl_files)}ファイル")
+    
+    # API Key取得（Gemini使用時）
+    api_key = None
+    if args.backend in ['gemini', 'gemini-batch']:
+        api_key = args.api_key or os.environ.get("GOOGLE_API_KEY")
+        if not api_key:
+            print("エラー: Geminiを使用するには --api-key または環境変数 GOOGLE_API_KEY が必要です", file=sys.stderr)
+            sys.exit(1)
+    
+    # 出力ディレクトリを作成
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    # 各ファイルを処理
+    total_processed = 0
+    total_translated = 0
+    failed_files = []
+    
+    print(f"\nバックエンド: {args.backend}")
+    print(f"モデル: {args.model}")
+    print("=" * 60)
+    
+    for idx, input_file in enumerate(jsonl_files, 1):
+        # 出力ファイル名を生成
+        output_filename = input_file.stem + "_translated.jsonl"
+        output_file = output_dir / output_filename
+        
+        print(f"\n[{idx}/{len(jsonl_files)}] {input_file.name} を処理中...")
+        
+        try:
+            # 単一ファイル処理（ディレクトリ処理時は count=None で全メッセージを処理）
+            processed, translated = process_single_file(
+                input_file=input_file,
+                output_file=output_file,
+                backend=args.backend,
+                model=args.model,
+                api_key=api_key,
+                detailed=args.detailed,
+                timeout=args.timeout,
+                batch_size=args.batch_size,
+                poll_interval=args.poll_interval,
+                count=None  # ディレクトリ処理時は各ファイルの全メッセージを処理
+            )
+            
+            total_processed += processed
+            total_translated += translated
+            
+            print(f"  ✓ 完了: {output_file.name} ({processed}件中{translated}件翻訳)")
+            
+        except Exception as e:
+            print(f"  ✗ エラー: {e}", file=sys.stderr)
+            failed_files.append(input_file.name)
+            continue
+    
+    # 最終結果
+    print("\n" + "=" * 60)
+    print("処理完了:")
+    print(f"  処理ファイル数: {len(jsonl_files) - len(failed_files)}/{len(jsonl_files)}")
+    print(f"  総メッセージ数: {total_processed:,}件")
+    print(f"  翻訳メッセージ数: {total_translated:,}件")
+    
+    if failed_files:
+        print(f"\n  ⚠️  失敗したファイル ({len(failed_files)}件):")
+        for filename in failed_files:
+            print(f"    - {filename}")
+    
+    print(f"\n出力ディレクトリ: {output_dir}")
+    print("=" * 60)
+
+
 def main():
     parser = argparse.ArgumentParser(description='中国語メッセージに翻訳を追加')
-    parser.add_argument('--input', '-i', required=True, help='入力JSONLファイル')
-    parser.add_argument('--output', '-o', required=True, help='出力JSONLファイル')
+    
+    # 入力/出力オプション（単一ファイルまたはディレクトリ）
+    input_group = parser.add_mutually_exclusive_group(required=True)
+    input_group.add_argument('--input', '-i', type=Path, help='入力JSONLファイル')
+    input_group.add_argument('--input-dir', type=Path, help='入力ディレクトリ（日毎に分割されたJSONLファイル）')
+    
+    output_group = parser.add_mutually_exclusive_group(required=True)
+    output_group.add_argument('--output', '-o', type=Path, help='出力JSONLファイル')
+    output_group.add_argument('--output-dir', type=Path, help='出力ディレクトリ')
+    
     parser.add_argument('--backend', '-b', default='none',
                        choices=['none', 'ollama', 'gemini', 'gemini-batch', 'export', 'merge'],
                        help='翻訳バックエンド (gemini-batch: 50%%割引のバッチAPI)')
@@ -824,9 +1073,19 @@ def main():
     parser.add_argument('--detailed', action='store_true',
                        help='詳細翻訳モード（言語学習向け、単語解説・ニュアンス分析・返信案を含む）')
     parser.add_argument('--count', '--limit', '-n', type=int, default=None,
-                       help='処理する中国語メッセージの最大件数（テスト用）')
+                       help='単一ファイル: 処理するメッセージ数、ディレクトリ: 処理する日数（テスト用）')
 
     args = parser.parse_args()
+    
+    # 入力/出力の整合性チェック
+    if args.input and not args.output:
+        parser.error("--input を使用する場合は --output も指定してください")
+    if args.input_dir and not args.output_dir:
+        parser.error("--input-dir を使用する場合は --output-dir も指定してください")
+    if args.output and not args.input:
+        parser.error("--output を使用する場合は --input も指定してください")
+    if args.output_dir and not args.input_dir:
+        parser.error("--output-dir を使用する場合は --input-dir も指定してください")
     
     # モデル一覧表示
     if args.list_models:
@@ -839,150 +1098,35 @@ def main():
             print("Ollamaに接続できないか、モデルがありません")
         return
     
-    # メッセージ読み込み
-    messages = []
-    with open(args.input, 'r', encoding='utf-8') as f:
-        for line in f:
-            if line.strip():
-                messages.append(json.loads(line))
-    
-    print(f"読み込んだメッセージ数: {len(messages)}")
-    
-    if args.backend == 'export':
-        # 外部翻訳用にエクスポート
-        export_file = args.translation_file or args.output.replace('.jsonl', '_to_translate.txt')
-        translate_batch_for_external(messages, export_file)
+    # ディレクトリ処理モード
+    if args.input_dir:
+        process_directory(args)
         return
     
-    elif args.backend == 'merge':
-        # 外部翻訳をマージ
-        if not args.translation_file:
-            print("--translation-file を指定してください", file=sys.stderr)
-            sys.exit(1)
-        messages = merge_translations(messages, args.translation_file)
+    # 単一ファイル処理モード
+    api_key = args.api_key or os.environ.get("GOOGLE_API_KEY") if args.backend in ['gemini', 'gemini-batch'] else None
     
-    elif args.backend == 'ollama':
-        # Ollamaで翻訳
-        zh_messages = [m for m in messages if m.get("lang") == "zh" and m.get("type") == "text"]
-
-        # 件数制限
-        if args.count is not None:
-            print(f"翻訳対象: {len(zh_messages)}件中、最初の{args.count}件を処理")
-            zh_messages = zh_messages[:args.count]
-        else:
-            print(f"翻訳対象: {len(zh_messages)}件")
-
-        if args.detailed:
-            # 詳細翻訳モード - 確認プロンプト
-            if not confirm_translation(zh_messages, detailed=True, model=args.model):
-                print("処理を中止しました。")
-                sys.exit(0)
-
-            for m in tqdm(zh_messages, desc="詳細翻訳中"):
-                # 簡易翻訳（後方互換性のため）
-                translation = translate_with_ollama(m["text"], args.model, args.timeout)
-                if translation:
-                    m["text_ja"] = translation
-
-                # 詳細翻訳
-                detailed = translate_with_ollama_detailed(m["text"], args.model, args.timeout)
-                if detailed:
-                    m["text_ja_detailed"] = detailed
-        else:
-            # 簡易翻訳モード
-            for m in tqdm(zh_messages, desc="翻訳中"):
-                translation = translate_with_ollama(m["text"], args.model, args.timeout)
-                print(f"翻訳: {m['text']} -> {translation}")
-                if translation:
-                    m["text_ja"] = translation
-
-
-    elif args.backend == 'gemini':
-        # Gemini APIで翻訳（通常API）
-        api_key = args.api_key or os.environ.get("GOOGLE_API_KEY")
-        if not api_key:
-            print("エラー: Geminiを使用するには引数 --api-key または環境変数 GOOGLE_API_KEY が必要です", file=sys.stderr)
-            sys.exit(1)
-
-        # デフォルトモデル調整 (Ollamaのデフォルトが指定されていた場合)
-        model = args.model
-        if model == 'qwen2.5:7b':
-            model = 'gemini-2.0-flash'
-
-        zh_messages = [m for m in messages if m.get("lang") == "zh" and m.get("type") == "text"]
-
-        # 件数制限
-        if args.count is not None:
-            original_count = len(zh_messages)
-            zh_messages = zh_messages[:args.count]
-            print(f"翻訳対象: {original_count}件中、最初の{args.count}件を処理")
-
-        if args.detailed:
-            # 詳細翻訳モード - 確認プロンプト
-            if not confirm_translation(zh_messages, detailed=True, model=model):
-                print("処理を中止しました。")
-                sys.exit(0)
-
-            for m in tqdm(zh_messages, desc="詳細翻訳中"):
-                # 簡易翻訳（後方互換性のため）
-                translation = translate_with_gemini(m["text"], api_key, model)
-                if translation:
-                    m["text_ja"] = translation
-
-                # 詳細翻訳
-                detailed = translate_with_gemini_detailed(m["text"], api_key, model)
-                if detailed:
-                    m["text_ja_detailed"] = detailed
-        else:
-            # 簡易翻訳モード - 確認プロンプト
-            if not confirm_translation(zh_messages, detailed=False, model=model):
-                print("処理を中止しました。")
-                sys.exit(0)
-
-            for m in tqdm(zh_messages, desc="翻訳中"):
-                translation = translate_with_gemini(m["text"], api_key, model)
-                if translation:
-                    m["text_ja"] = translation
-
-    elif args.backend == 'gemini-batch':
-        # Gemini Batch APIで翻訳（50%割引）
-        api_key = args.api_key or os.environ.get("GOOGLE_API_KEY")
-        if not api_key:
-            print("エラー: Geminiを使用するには引数 --api-key または環境変数 GOOGLE_API_KEY が必要です", file=sys.stderr)
-            sys.exit(1)
-
-        # デフォルトモデル調整
-        model = args.model
-        if model == 'qwen2.5:7b':
-            model = 'gemini-2.0-flash'
-
-        # バッチAPIで翻訳実行
-        translations = translate_with_gemini_batch(
-            messages=messages,
-            api_key=api_key,
-            model=model,
-            batch_size=args.batch_size,
-            poll_interval=args.poll_interval,
-            max_count=args.count
-        )
-
-        # 翻訳結果をメッセージにマージ
-        for m in messages:
-            if m["id"] in translations:
-                m["text_ja"] = translations[m["id"]]
+    print(f"入力ファイル: {args.input}")
+    print(f"バックエンド: {args.backend}")
+    print(f"モデル: {args.model}")
     
-    elif args.backend == 'none':
-        # 翻訳なし（text_jaフィールドを空で追加）
-        for m in messages:
-            if m.get("lang") == "zh" and m.get("type") == "text":
-                m["text_ja"] = ""
+    total_messages, translated_count = process_single_file(
+        input_file=args.input,
+        output_file=args.output,
+        backend=args.backend,
+        model=args.model,
+        api_key=api_key,
+        detailed=args.detailed,
+        timeout=args.timeout,
+        batch_size=args.batch_size,
+        poll_interval=args.poll_interval,
+        count=args.count
+    )
     
-    # 出力
-    with open(args.output, 'w', encoding='utf-8') as f:
-        for m in messages:
-            f.write(json.dumps(m, ensure_ascii=False) + '\n')
-    
-    print(f"出力完了: {args.output}")
+    print(f"\n出力完了: {args.output}")
+    print(f"総メッセージ数: {total_messages:,}件")
+    if translated_count > 0:
+        print(f"翻訳メッセージ数: {translated_count:,}件")
 
 
 if __name__ == '__main__':

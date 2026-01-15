@@ -23,6 +23,8 @@ WeChat のスクリーンショットから会話を自動抽出し、JSONL 形�
 - **中断・再開機能**: チェックポイント対応で大量画像も安心
 - **重複除去**: スクロールキャプチャによる重複メッセージを自動除去
 - **品質補正**: OCR特有の誤り（`70üTübé`など）や言語不整合を自動検知・修正
+- **バッチ翻訳**: Gemini Batch API で50%割引の大量翻訳（自動リソース管理）
+- **クリーンアップツール**: Google Files API の不要なファイルを削除
 
 ## 環境構築
 
@@ -300,39 +302,72 @@ python translate.py \
 大量のメッセージを翻訳する場合は、バッチAPIが最もコスト効率が良いです。
 
 ```bash
-# バッチAPI使用（50%割引）
+# バッチAPI使用（50%割引・推奨設定）
 export GOOGLE_API_KEY="your_api_key_here"
 python translate.py \
     --input ./output/refined.jsonl \
     --output ./output/translated.jsonl \
     --backend gemini-batch \
-    --model gemini-2.0-flash
-
-# オプション: バッチサイズとポーリング間隔を調整
-python translate.py \
-    --input ./output/refined.jsonl \
-    --output ./output/translated.jsonl \
-    --backend gemini-batch \
-    --model gemini-3-flash-preview \
-    --batch-size 200 \
+    --model gemini-2.0-flash \
+    --batch-size 1000 \
     --poll-interval 60
 ```
 
-**注意**: バッチAPIは非同期処理のため、完了まで時間がかかる場合があります（通常数分〜24時間以内）。
+**2026-01-15 改善内容:**
+- ✅ **リモートファイルの自動削除**: バッチ処理完了後、Google Files API にアップロードされたファイルを自動削除
+- ✅ **バッチ統計情報の表示**: 成功/失敗件数をリアルタイム表示
+- ✅ **モデル名の正規化**: プレフィックスの重複を自動回避
+
+**実行例の出力:**
+```
+バッチ翻訳対象: 12,897件 (モデル: gemini-2.0-flash)
+バッチAPIは通常料金の50%割引です
+
+バッチ 1/13 を処理中... (1000件)
+リクエストファイルをアップロード中...
+アップロード完了: files/xxx
+バッチジョブを作成中...
+結果を取得中...
+  処理完了: 1000/1000 件成功  ← 新機能
+リモートファイル削除: files/xxx  ← 新機能
+バッチ 1 完了: 1000件翻訳成功
+
+全バッチ処理完了: 12,897/12,897件翻訳成功
+```
+
+**バッチサイズの目安:**
+
+| データ量 | 推奨バッチサイズ | 処理時間 |
+|---------|----------------|----------|
+| <100件 | 通常API推奨 | 即座 |
+| 100-1000件 | 200-500件 | 10-30分 |
+| 1000-5000件 | 500-1000件 | 20-60分 |
+| >5000件 | **1000件** | 30-90分 |
+
+**注意**: バッチAPIは非同期処理のため、完了まで時間がかかる場合があります（通常数分〜90分以内）。
 
 **必要なパッケージ**:
 ```bash
 pip install google-genai
 ```
 
-#### 料金目安（10,000件の中国語メッセージの場合）
+#### 料金目安
+
+**10,000件の中国語メッセージの場合:**
 
 | バックエンド | モデル | 推定料金 |
 |-------------|--------|----------|
 | `gemini` | gemini-2.0-flash | 約$0.15（約24円） |
 | `gemini-batch` | gemini-2.0-flash | **約$0.08（約12円）** |
-| `gemini` | gemini-3-flash-preview | 約$1.00（約160円） |
-| `gemini-batch` | gemini-3-flash-preview | **約$0.50（約80円）** |
+
+**refined.jsonl の実データ（12,897件）の場合:**
+
+| バックエンド | モデル | 推定料金 |
+|-------------|--------|----------|
+| `gemini` | gemini-2.0-flash | 約$0.08（約13円） |
+| `gemini-batch` | gemini-2.0-flash | **約$0.04（約6円）** ← 推奨 |
+
+※ 平均文字数11文字/メッセージで計算
 
 #### 外部翻訳用にエクスポート
 
@@ -342,6 +377,27 @@ python translate.py \
     --output ./output/to_translate.txt \
     --backend export
 ```
+
+#### 🧹 リモートファイルのクリーンアップ（オプション）
+
+最新版の translate.py は自動的にリモートファイルを削除しますが、以前のテストで残っているファイルを削除する場合：
+
+```bash
+# ファイル一覧を表示
+python cleanup_remote_files.py --list
+
+# 24時間以上前のファイルを削除
+python cleanup_remote_files.py --delete-old --hours 24
+
+# すべてのファイルを削除
+python cleanup_remote_files.py --delete-all
+```
+
+**詳細情報:**
+- クイックスタート: `CLEANUP_QUICKSTART.md`
+- 詳細ガイド: `CLEANUP_GUIDE.md`
+
+**注意:** Google Files API にアップロードされたファイルは48時間後に自動削除されますが、手動削除により即座にストレージを解放できます。
 
 ### 一括実行
 
@@ -381,15 +437,20 @@ JSONL 形式で 1 行 1 メッセージ：
 
 ```
 wechat_extractor/
-├── extract.py          # メイン抽出スクリプト（デュアルOCR）
-├── dedupe.py           # 重複除去スクリプト
-├── analyze.py          # 分析・統計・検索スクリプト
-├── refine.py           # 品質補正・評価スクリプト
-├── translate.py        # 翻訳追加スクリプト
-├── run_pipeline.sh     # 一括実行スクリプト
-├── config.yaml         # 設定ファイル
-├── requirements.txt    # 依存パッケージ
-└── README.md           # このファイル
+├── extract.py                  # メイン抽出スクリプト（デュアルOCR）
+├── dedupe.py                   # 重複除去スクリプト
+├── analyze.py                  # 分析・統計・検索スクリプト
+├── refine.py                   # 品質補正・評価スクリプト
+├── translate.py                # 翻訳追加スクリプト（改善版）
+├── cleanup_remote_files.py     # Google Files API クリーンアップ（新規）
+├── run_pipeline.sh             # 一括実行スクリプト
+├── config.yaml                 # 設定ファイル
+├── requirements.txt            # 依存パッケージ
+├── README.md                   # このファイル
+├── REVIEW_translate.md         # translate.py レビュー結果
+├── IMPROVEMENTS_APPLIED.md     # 実施した改善の詳細
+├── CLEANUP_QUICKSTART.md       # クリーンアップクイックスタート
+└── CLEANUP_GUIDE.md            # クリーンアップ詳細ガイド
 
 your_project/
 ├── screenshots/        # 入力：スクリーンショット
@@ -502,6 +563,38 @@ python -c "import paddle; paddle.utils.run_check()"
 2. **メッセージの分割**: 長いメッセージが複数行に分割されることがある
 3. **絵文字の認識**: 絵文字は認識されないか、文字化けすることがある
 4. **一部の誤字**: 類似した漢字（健康 → 建康、炭酸 → 提酸）が誤認識されることがある
+
+## 🆕 最近の改善（2026-01-15）
+
+### translate.py の改善
+
+1. **リモートファイルの自動削除** (優先度: 高)
+   - Google Files API にアップロードされたファイルを自動削除
+   - ストレージクォータの節約とリソース管理の適正化
+   - 実装箇所: translate.py:336-341
+
+2. **バッチ統計情報の表示** (優先度: 中)
+   - 成功/失敗件数をリアルタイム表示
+   - 問題の早期発見が可能
+   - 実装箇所: translate.py:279-287
+
+3. **モデル名の正規化** (優先度: 低)
+   - `models/` プレフィックスの重複を自動回避
+   - より堅牢なコード
+   - 実装箇所: translate.py:246-249
+
+### 新規ツール: cleanup_remote_files.py
+
+Google Files API に残っている古いファイルを削除するツールを追加：
+- ファイル一覧の表示
+- 古いファイルのみ削除（24時間以上前など）
+- すべてのファイルを削除
+- 安全な削除（確認プロンプト付き）
+
+**詳細情報:**
+- レビュー結果: `REVIEW_translate.md`
+- 改善内容: `IMPROVEMENTS_APPLIED.md`
+- クリーンアップガイド: `CLEANUP_GUIDE.md`, `CLEANUP_QUICKSTART.md`
 
 ## 今後の拡張予定
 

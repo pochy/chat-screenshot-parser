@@ -9,10 +9,10 @@
     python translate.py --input ./output/conversations.jsonl --output ./output/translated.jsonl --backend ollama --model qwen2.5:7b
 
     # Gemini通常API（リアルタイム翻訳）
-    python translate.py --input ./output/conversations.jsonl --output ./output/translated.jsonl --backend gemini --model gemini-2.0-flash
+    python translate.py --input ./output/conversations.jsonl --output ./output/translated.jsonl --backend gemini --model gemini-3-flash-preview
 
     # Gemini バッチAPI（50%割引、非同期処理）
-    python translate.py --input ./output/conversations.jsonl --output ./output/translated.jsonl --backend gemini-batch --model gemini-2.0-flash
+    python translate.py --input ./output/conversations.jsonl --output ./output/translated.jsonl --backend gemini-batch --model gemini-3-flash-preview
 
     # 翻訳なしで text_ja フィールドだけ追加（後で手動/他ツールで翻訳）
     python translate.py --input ./output/conversations.jsonl --output ./output/with_text_ja.jsonl --backend none
@@ -243,8 +243,10 @@ def translate_with_gemini_batch(
 
             # バッチジョブを作成
             print("バッチジョブを作成中...")
+            # モデル名の正規化（"models/" プレフィックスの重複を防ぐ）
+            normalized_model = model.removeprefix("models/")
             batch_job = client.batches.create(
-                model=f"models/{model}",
+                model=f"models/{normalized_model}",
                 src=uploaded_file.name,
                 config={"display_name": f"translate-batch-{batch_idx + 1}"}
             )
@@ -275,6 +277,16 @@ def translate_with_gemini_batch(
             # 結果を取得
             if state_name == 'JOB_STATE_SUCCEEDED':
                 print("結果を取得中...")
+
+                # バッチ統計を表示
+                if hasattr(batch, 'stats'):
+                    stats = batch.stats
+                    total = stats.total_request_count if hasattr(stats, 'total_request_count') else 0
+                    failed = stats.failed_request_count if hasattr(stats, 'failed_request_count') else 0
+                    succeeded = total - failed
+                    print(f"  処理完了: {succeeded}/{total} 件成功")
+                    if failed > 0:
+                        print(f"  ⚠️  警告: {failed}/{total} 件失敗", file=sys.stderr)
 
                 # ファイル出力の場合
                 if hasattr(batch, 'dest') and hasattr(batch.dest, 'file_name') and batch.dest.file_name:
@@ -321,7 +333,14 @@ def translate_with_gemini_batch(
                     print(f"  エラー詳細: {batch.error}", file=sys.stderr)
 
         finally:
-            # 一時ファイルを削除
+            # Google にアップロードしたリモートファイルを削除
+            try:
+                client.files.delete(name=uploaded_file.name)
+                print(f"リモートファイル削除: {uploaded_file.name}")
+            except Exception as e:
+                print(f"リモートファイル削除エラー: {e}", file=sys.stderr)
+
+            # ローカルの一時ファイルを削除
             try:
                 os.unlink(temp_file_path)
             except OSError:

@@ -1,91 +1,93 @@
 # WeChat Screenshot Conversation Extractor
 
-WeChat のスクリーンショットから会話を自動抽出し、JSONL 形式で出力するツール。
+- [日本語版](./README_ja.md)
 
-## 概要
+A tool that automatically extracts conversations from WeChat screenshots and outputs them in JSONL format.
 
-このツールは、日本語と中国語の WeChat 会話履歴を分析するために設計されています。
+## Overview
 
-### ユースケース
+This tool is designed to analyze WeChat conversation history mixed with Japanese and Chinese.
 
-- 二者間の会話履歴をデータ化
-- スクリーンショットからテキストを自動抽出
-- 時系列での会話分析
-- キーワード検索
+### Use Cases
 
-### 特徴
+- Digitalizing conversation history between two parties
+- Automatically extracting text from screenshots
+- Chronological conversation analysis
+- Keyword search
 
-- **デュアル OCR モデル**: 中国語モデル（`ch`）と日本語モデル（`japan`）を併用し、高精度な認識を実現
-- **位置ベース話者判定**: WeChat の UI（左=ユーザー B、右=ユーザー A）を利用した自動判定
-- **GPU 対応**: RTX 3060 Ti 等で高速処理（1 枚あたり約 0.2 秒）
-- **タイムスタンプ抽出**: WeChat 形式（`2025-6-18 20:03`等）を自動検出
-- **システムメッセージ判定**: 特定のキーワードだけでなく、画面中央のテキストを自動判定
-- **中断・再開機能**: チェックポイント対応で大量画像も安心
-- **重複除去**: スクロールキャプチャによる重複メッセージを自動除去
-- **品質補正**: OCR特有の誤り（`70üTübé`など）や言語不整合を自動検知・修正
-- **バッチ翻訳**: Gemini Batch API で50%割引の大量翻訳（自動リソース管理）
-- **クリーンアップツール**: Google Files API の不要なファイルを削除
+### Features
 
-## 環境構築
+- **Dual OCR Models**: Uses both Chinese (`ch`) and Japanese (`japan`) models to achieve high recognition accuracy.
+- **Location-based Speaker Identification**: Automatically identifies speakers based on WeChat's UI (Left = User B, Right = User A).
+- **GPU Support**: High-speed processing with RTX 3060 Ti etc. (approx. 0.2 seconds per image).
+- **Timestamp Extraction**: Automatically detects WeChat style timestamps (e.g., `2025-6-18 20:03`).
+- **System Message Detection**: Automatically detects system messages based on center alignment, not just keywords.
+- **Suspend/Resume Capability**: Supports checkpoints for safe processing of large numbers of images.
+- **Deduplication**: Automatically removes duplicate messages caused by scroll captures.
+- **Quality Refinement**: Automatically detects and corrects OCR-specific errors (e.g., `70üTübé`) and language inconsistencies.
+- **Batch Translation**: Bulk translation with 50% discount using Gemini Batch API (automatic resource management).
+- **Cleanup Tool**: Deletes unnecessary files from Google Files API.
 
-### 1. 前提条件
+## Setup
 
-- Python 3.9 以上
-- CUDA 11.8 または 12.x（GPU 使用時）
-- NVIDIA GPU（RTX 3060 Ti 等推奨）
+### 1. Prerequisites
+
+- Python 3.9 or higher
+- CUDA 11.8 or 12.x (when using GPU)
+- NVIDIA GPU (RTX 3060 Ti or higher recommended)
 
 ```bash
-# CUDA バージョン確認
+# Check CUDA version
 nvcc --version
 ```
 
-### 2. Python 環境の準備
+### 2. Prepare Python Environment
 
 ```bash
-# 仮想環境作成（推奨）
+# Create virtual environment (Recommended)
 python -m venv venv
 
-# 有効化 (Windows)
+# Activate (Windows)
 .\venv\Scripts\activate
 
-# 有効化 (Linux/Mac)
+# Activate (Linux/Mac)
 source venv/bin/activate
 ```
 
-### 3. 依存パッケージのインストール
+### 3. Install Dependencies
 
-**重要**: PaddleOCR v3.x には互換性問題があるため、**v2.9.1** を使用してください。
+**Important**: PaddleOCR v3.x has compatibility issues, so please use **v2.9.1**.
 
 ```bash
-# PaddlePaddle GPU版のインストール
-# ※ CUDAバージョンに応じて適切なURLを選択
+# Install PaddlePaddle GPU version
+# * Select appropriate URL according to CUDA version
 
-# CUDA 11.8 の場合
+# For CUDA 11.8
 pip install paddlepaddle-gpu -i https://www.paddlepaddle.org.cn/packages/stable/cu118/
 
-# CUDA 12.3 の場合
+# For CUDA 12.3
 pip install paddlepaddle-gpu -i https://www.paddlepaddle.org.cn/packages/stable/cu123/
 
-# CUDA 12.6 の場合
+# For CUDA 12.6
 pip install paddlepaddle-gpu -i https://www.paddlepaddle.org.cn/packages/stable/cu126/
 
-# PaddleOCR（安定版）
+# PaddleOCR (Stable version)
 pip install "paddleocr==2.9.1"
 
-# その他の依存パッケージ
+# Other dependencies
 pip install opencv-python numpy tqdm
 ```
 
-### 4. 動作確認
+### 4. Verification
 
 ```bash
 python -c "import paddle; paddle.utils.run_check()"
 python -c "from paddleocr import PaddleOCR; print('OK')"
 ```
 
-## 使用方法
+## Usage
 
-### 処理フロー
+### Process Flow
 
 ```mermaid
 graph LR
@@ -103,22 +105,22 @@ graph LR
     style F fill:#e8f5e9
 ```
 
-#### 詳細フロー
+#### Detailed Flow
 
 ```mermaid
 flowchart TD
-    Start([WeChat スクリーンショット]) --> Extract
+    Start([WeChat Screenshots]) --> Extract
 
-    subgraph Extract["Step 1: OCR 抽出 (extract.py)"]
-        E1[中国語OCR でテキスト位置検出]
-        E2{位置判定}
-        E3[右側: 日本語OCR で再認識<br/>user_a]
-        E4[左側: 中国語OCR 結果使用<br/>user_b]
-        E5[中央: タイムスタンプ/システム判定]
+    subgraph Extract["Step 1: OCR Extraction (extract.py)"]
+        E1[Detect text position with Chinese OCR]
+        E2{Position Check}
+        E3[Right: Re-recognize with Japanese OCR<br/>user_a]
+        E4[Left: Use Chinese OCR result<br/>user_b]
+        E5[Center: Timestamp/System Check]
         E1 --> E2
-        E2 -->|右| E3
-        E2 -->|左| E4
-        E2 -->|中央| E5
+        E2 -->|Right| E3
+        E2 -->|Left| E4
+        E2 -->|Center| E5
         E3 --> E6[conversations.jsonl]
         E4 --> E6
         E5 --> E6
@@ -126,24 +128,24 @@ flowchart TD
 
     Extract --> Dedupe
 
-    subgraph Dedupe["Step 2: 重複除去 (dedupe.py)"]
-        D1[メッセージペアの類似度計算<br/>Jaccard係数]
-        D2{類似度 > 0.8?}
-        D3[重複を除去]
+    subgraph Dedupe["Step 2: Deduplication (dedupe.py)"]
+        D1[Calculate similarity of message pairs<br/>Jaccard Index]
+        D2{Similarity > 0.8?}
+        D3[Remove duplicate]
         D1 --> D2
         D2 -->|Yes| D3
-        D2 -->|No| D4[保持]
+        D2 -->|No| D4[Keep]
         D3 --> D5[deduped.jsonl]
         D4 --> D5
     end
 
     Dedupe --> Refine
 
-    subgraph Refine["Step 3: 品質補正 (refine.py)"]
-        R1[ルールベース補正<br/>既知のOCRエラー修正]
-        R2{LLM使用?}
-        R3[LLMで品質評価<br/>naturalness スコア付与]
-        R4[needs_review フラグ設定]
+    subgraph Refine["Step 3: Quality Refinement (refine.py)"]
+        R1[Rule-based correction<br/>Fix known OCR errors]
+        R2{Use LLM?}
+        R3[Quality evaluation with LLM<br/>Assign naturalness score]
+        R4[Set needs_review flag]
         R1 --> R2
         R2 -->|--use-llm| R3
         R2 -->|No| R4
@@ -151,23 +153,23 @@ flowchart TD
         R4 --> R5[refined.jsonl]
     end
 
-    Refine --> Branch{用途選択}
+    Refine --> Branch{Usage Choice}
 
-    subgraph Analyze["Step 4a: 分析 (analyze.py)"]
-        A1[統計情報生成]
-        A2[キーワード検索]
-        A3[レポート出力]
+    subgraph Analyze["Step 4a: Analysis (analyze.py)"]
+        A1[Generate Statistics]
+        A2[Keyword Search]
+        A3[Output Report]
         A1 --> A3
         A2 --> A3
         A3 --> A4[report.txt / stats.json]
     end
 
-    subgraph Translate["Step 4b: 翻訳 (translate.py)"]
-        T1{翻訳バックエンド}
-        T2[Ollama<br/>ローカルLLM]
-        T3[Gemini 通常API<br/>リアルタイム]
-        T3B[Gemini バッチAPI<br/>50%割引]
-        T4[Export<br/>外部翻訳用]
+    subgraph Translate["Step 4b: Translation (translate.py)"]
+        T1{Translation Backend}
+        T2[Ollama<br/>Local LLM]
+        T3[Gemini Standard API<br/>Real-time]
+        T3B[Gemini Batch API<br/>50% Discount]
+        T4[Export<br/>For External Tool]
         T1 -->|--backend ollama| T2
         T1 -->|--backend gemini| T3
         T1 -->|--backend gemini-batch| T3B
@@ -178,11 +180,11 @@ flowchart TD
         T4 --> T6[to_translate.txt]
     end
 
-    Branch -->|分析| Analyze
-    Branch -->|翻訳| Translate
+    Branch -->|Analysis| Analyze
+    Branch -->|Translation| Translate
 
-    Analyze --> End1([📊 統計・検索結果])
-    Translate --> End2([🌐 翻訳済みデータ])
+    Analyze --> End1([📊 Stats & Search Results])
+    Translate --> End2([🌐 Translated Data])
 
     style Start fill:#e3f2fd
     style End1 fill:#c8e6c9
@@ -194,54 +196,54 @@ flowchart TD
     style Translate fill:#b2dfdb
 ```
 
-### Step 1: OCR 抽出
+### Step 1: OCR Extraction
 
 ```bash
 python extract.py --input ./screenshots --output ./output/conversations.jsonl
 ```
 
-初回実行時に OCR モデルがダウンロードされます（中国語モデル + 日本語モデル）。
+OCR models will be downloaded on the first run (Chinese model + Japanese model).
 
-#### オプション
+#### Options
 
 ```bash
-# チェックポイント付き（中断再開可能）
+# With checkpoint (Resumable)
 python extract.py \
     --input ./screenshots \
     --output ./output/conversations.jsonl \
     --checkpoint ./output/checkpoint.json
 
-# CPU使用（GPUがない場合）
+# Use CPU (If no GPU)
 python extract.py \
     --input ./screenshots \
     --output ./output/conversations.jsonl \
     --no-gpu
 
-# テスト用に最初の100枚だけ処理
+# Process only first 100 images for testing
 python extract.py \
     --input ./screenshots \
     --output ./output/conversations.jsonl \
     --count 100
 ```
 
-### Step 2: 重複除去
+### Step 2: Deduplication
 
-スクロールキャプチャによる重複メッセージを除去します。
+Removes duplicate messages caused by scroll captures.
 
 ```bash
 python dedupe.py --input ./output/conversations.jsonl --output ./output/deduped.jsonl
 ```
 
-### Step 3: 品質補正 (推奨)
+### Step 3: Quality Refinement (Recommended)
 
-OCRの誤認識や不自然な日本語を検知・補正します。
+Detects and corrects OCR misrecognitions and unnatural Japanese.
 
 ```bash
-# 基本的な使用方法 (ルールベースのみ・高速)
+# Basic usage (Rule-based only, Fast)
 python refine.py --input ./output/deduped.jsonl --output ./output/refined.jsonl
 
-# LLMを使用して高精度に判定 (推奨)
-# ※ Ollama等のローカルLLMサーバーが必要です
+# High precision judgment using LLM (Recommended)
+# * Requires local LLM server like Ollama
 python refine.py \
     --input ./output/deduped.jsonl \
     --output ./output/refined.jsonl \
@@ -249,9 +251,9 @@ python refine.py \
     --llm-model qwen2.5:7b
 ```
 
-### Step 3.5: 日毎ファイル分割（オプション）
+### Step 3.5: Split by Date (Optional)
 
-大量の会話データを日付ごとに分割して管理・翻訳します。
+Splits large conversation data by date for management and translation.
 
 ```bash
 python split_by_date.py \
@@ -259,48 +261,48 @@ python split_by_date.py \
     --output-dir ./output/daily
 ```
 
-**出力例:**
+**Output Example:**
 ```
-./output/daily/2025-05-25.jsonl  (233件)
-./output/daily/2025-05-26.jsonl  (169件)
-./output/daily/2025-06-18.jsonl  (371件)
+./output/daily/2025-05-25.jsonl  (233 items)
+./output/daily/2025-05-26.jsonl  (169 items)
+./output/daily/2025-06-18.jsonl  (371 items)
 ...
 ```
 
-**メリット:**
-- 日付ごとの管理が容易
-- 特定期間のみを翻訳可能
-- 大量データの段階的処理
+**Benefits:**
+- Easy management by date
+- Translate only specific periods
+- Partial processing of large data
 
-### Step 4: 分析
+### Step 4: Analysis
 
 ```bash
-# レポート表示
+# Show report
 python analyze.py --input ./output/refined.jsonl
 
-# キーワード検索
-python analyze.py --input ./output/refined.jsonl --search "炭酸"
+# Keyword search
+python analyze.py --input ./output/refined.jsonl --search "Carbonated"
 
-# JSON形式で出力
+# Output in JSON format
 python analyze.py --input ./output/refined.jsonl --json > stats.json
 ```
 
-### Step 5: 翻訳（オプション）
+### Step 5: Translation (Optional)
 
-中国語メッセージに日本語翻訳を追加します。
+Adds Japanese translations to Chinese messages.
 
-#### 翻訳バックエンドの比較
+#### Translation Backend Comparison
 
-| バックエンド | コスト | 速度 | プライバシー | 詳細翻訳 | 用途 |
+| Backend | Cost | Speed | Privacy | Detailed Translation | Use Case |
 |-------------|--------|------|-------------|---------|------|
-| `ollama` | 無料 | GPU依存 | ローカル完結 | ❌ | プライバシー重視 |
-| `gemini` | 有料 | 高速 | クラウド送信 | ✅ | リアルタイム処理、学習用 |
-| `gemini-batch` | **50%割引** | 非同期 | クラウド送信 | ❌ | 大量翻訳（推奨） |
-| `export` | - | - | - | ❌ | 外部ツール連携 |
+| `ollama` | Free | GPU Dep | Local Only | ❌ | Privacy Focused |
+| `gemini` | Paid | Fast | Cloud Sent | ✅ | Real-time, Learning |
+| `gemini-batch` | **50% OFF** | Async | Cloud Sent | ❌ | Bulk Translation (Recommended) |
+| `export` | - | - | - | ❌ | External Tools |
 
-#### Ollama使用（ローカルLLM・無料）
+#### Using Ollama (Local LLM, Free)
 
-**単一ファイル処理:**
+**Single File Processing:**
 ```bash
 python translate.py \
     --input ./output/refined.jsonl \
@@ -309,16 +311,16 @@ python translate.py \
     --model qwen2.5:7b
 ```
 
-**ディレクトリ処理（日毎ファイル一括翻訳）:**
+**Directory Processing (Batch translation by date):**
 ```bash
-# 全日付を処理
+# Process all dates
 python translate.py \
     --input-dir ./output/daily \
     --output-dir ./output/translated \
     --backend ollama \
     --model qwen2.5:7b
 
-# 最初の10日分のみ処理（テスト用）
+# Process only first 10 days (For testing)
 python translate.py \
     --input-dir ./output/daily \
     --output-dir ./output/translated \
@@ -328,30 +330,30 @@ python translate.py \
 ```
 
 > [!NOTE]
-> ディレクトリ処理時、`--count` オプションは**日数**で制限します（例: `--count 10` で最初の10日分のファイルを処理）。単一ファイル処理時は従来通り**メッセージ数**で制限します。
+> When processing a directory, the `--count` option limits by **number of days** (e.g., `--count 10` processes files for the first 10 days). For single file processing, it limits by **number of messages** as before.
 
 
-#### Gemini 通常API（リアルタイム）
+#### Gemini Standard API (Real-time)
 
 ```bash
-# 環境変数 GOOGLE_API_KEY を設定するか、--api-key で指定
+# Set GOOGLE_API_KEY env var or specify via --api-key
 export GOOGLE_API_KEY="your_api_key_here"
 
-# コスト最安（gemini-2.5-flash-lite）
+# Lowest Cost (gemini-2.5-flash-lite)
 python translate.py \
     --input ./output/refined.jsonl \
     --output ./output/translated.jsonl \
     --backend gemini \
     --model gemini-2.5-flash-lite
 
-# バランス重視（gemini-2.0-flash）
+# Balance Focused (gemini-2.0-flash)
 python translate.py \
     --input ./output/refined.jsonl \
     --output ./output/translated.jsonl \
     --backend gemini \
     --model gemini-2.0-flash
 
-# テスト実行（最初の10件のみ処理）
+# Test Run (Process only first 10 items)
 python translate.py \
     --input ./output/refined.jsonl \
     --output ./output/test_translated.jsonl \
@@ -360,28 +362,28 @@ python translate.py \
     --count 10
 ```
 
-**実行時の確認プロンプト例:**
+**Execution Confirmation Prompt Example:**
 ```
 ============================================================
-【簡易翻訳モード】処理実行の確認
+[Simple Translation Mode] Execution Confirmation
 ============================================================
-モデル: gemini-2.5-flash-lite
-送信メッセージ数: 100件
-送信データサイズ: 2.02 KB
-推定料金: $0.0003 (約0円)
-推定トークン: 入力 5900, 出力 3000
+Model: gemini-2.5-flash-lite
+Message Count: 100 items
+Data Size: 2.02 KB
+Est. Cost: $0.0003 (approx. 0 JPY)
+Est. Tokens: Input 5900, Output 3000
 ============================================================
-続行しますか？ [Y/n]:
+Continue? [Y/n]:
 ```
 
-Enterキーまたは `Y` で処理を開始、`n` でキャンセルします。
+Press Enter or `Y` to start, `n` to cancel.
 
-#### 詳細翻訳モード（言語学習向け）
+#### Detailed Translation Mode (For Language Learning)
 
-中国語メッセージの詳細な解説を生成します。単語分解、ピンイン、HSKレベル、ニュアンス分析、返信提案を含む学習用フォーマットです。
+Generates detailed explanations for Chinese messages. Includes vocabulary breakdown, Pinyin, HSK level, nuance analysis, and reply suggestions in a learning format.
 
 ```bash
-# 詳細翻訳モード（コスト重視 - 推奨）
+# Detailed Mode (Cost Focused - Recommended)
 export GOOGLE_API_KEY="your_api_key_here"
 python translate.py \
     --input ./output/refined.jsonl \
@@ -390,7 +392,7 @@ python translate.py \
     --detailed \
     --model gemini-2.5-flash-lite
 
-# 詳細翻訳モード（バランス重視）
+# Detailed Mode (Balance Focused)
 python translate.py \
     --input ./output/refined.jsonl \
     --output ./output/detailed.jsonl \
@@ -398,7 +400,7 @@ python translate.py \
     --detailed \
     --model gemini-2.0-flash
 
-# テスト実行（最初の10件のみ処理）
+# Test Run (Process only first 10 items)
 python translate.py \
     --input ./output/refined.jsonl \
     --output ./output/test_detailed.jsonl \
@@ -408,66 +410,66 @@ python translate.py \
     --count 10
 ```
 
-**出力内容:**
-- 原文（中国語テキスト）
-- 自然な日本語訳
-- 単語・フレーズの詳細解説（ピンイン、HSK級、文法解説）
-- 全体のニュアンス分析（文脈・感情・関係性）
-- 3パターンの返信提案（優しい/冗談混じり/包容的）
+**Output Content:**
+- Original Text (Chinese)
+- Natural Japanese Translation
+- Vocabulary/Phrase Detailed Explanation (Pinyin, HSK Level, Grammar)
+- Overall Nuance Analysis (Context, Emotion, Relationship)
+- 3 Reply Suggestions (Gentle/Joking/Inclusive)
 
-**出力例:**
+**Output Example:**
 ```markdown
-## 原文
+## Original Text
 
 晚饭吃点好吃的吧
 
-## 日本語の意味（自然訳）
+## Japanese Meaning (Natural)
 
 晩ご飯は何か美味しいものを食べようよ。
 
-## 中国語の分解解説
+## Chinese Decomposition
 
-| 単語 | 品詞 | ピンイン | 意味 | 新HSK | 解説 |
+| Word | Part of Speech | Pinyin | Meaning | New HSK | Explanation |
 | :-- | :---- | :---------- | :------- | :--- | :----------- |
-| 晚饭 | 名詞 | wǎnfàn | 晩ご飯 | 2 | 夜に食べる食事。夕食。 |
-| 吃 | 動詞 | chī | 食べる | 1 | 基本的な動詞。食事をする行為。 |
+| 晚饭 | Noun | wǎnfàn | Dinner | 2 | Meal eaten in the evening. |
+| 吃 | Verb | chī | Eat | 1 | Basic verb. Act of eating. |
 ...
 
-## 全体のニュアンス
+## Overall Nuance
 
-このメッセージは、相手に晩ご飯を一緒に食べに行こうと提案する内容です。
+This message proposes going out to eat something good for dinner together.
 
 ...
 
-## 日本語での返事案（3パターン）
+## Reply Suggestions in Japanese (3 Patterns)
 
-① 優しい・恋人らしい
+① Gentle/Lovers
 うん、いいね！何が食べたい？一緒に考えようか？
 
-② 少し冗談混じり・軽め
+② Joking/Light
 おっ、いいね！じゃあ、今日は奮発して高級中華でも行く？(笑)
 
-③ 包容・安心感のある感じ
+③ Inclusive/Reassuring
 そうだね、何か美味しいもの食べたいね。ゆっくり話しながら、何にするか決めようか。
 ```
 
-**コスト:**
-- **gemini-2.5-flash-lite**: 100メッセージで約$0.09（約14円） ← 推奨
-- **gemini-2.0-flash**: 100メッセージで約$0.20（約32円）
-- 通常翻訳の約20倍のトークンを消費
+**Cost:**
+- **gemini-2.5-flash-lite**: Approx. $0.09 (approx. 14 JPY) per 100 messages <-- Recommended
+- **gemini-2.0-flash**: Approx. $0.20 (approx. 32 JPY) per 100 messages
+- Consumes about 20 times more tokens than normal translation.
 
-**注意:**
-- 詳細翻訳は `gemini` バックエンドのみ対応
-- `gemini-batch` では使用不可（簡易翻訳のみ）
-- 出力は `text_ja_detailed` フィールドに Markdown 形式で格納
-- 処理実行前に確認プロンプトが表示されます（送信データサイズ・推定料金を確認）
+**Note:**
+- Detailed translation is only supported by `gemini` backend.
+- Not available with `gemini-batch` (Simple translation only).
+- Output is stored in Markdown format in `text_ja_detailed` field.
+- A confirmation prompt is displayed before execution (check data size and estimated cost).
 
-#### Gemini バッチAPI（50%割引・大量翻訳推奨）
+#### Gemini Batch API (50% OFF - Recommended for Bulk Translation)
 
-大量のメッセージを翻訳する場合は、バッチAPIが最もコスト効率が良いです。
+Batch API is the most cost-effective way to translate large amounts of messages.
 
 ```bash
-# バッチAPI使用（50%割引・コスト最安）
+# Use Batch API (50% OFF, Lowest Cost)
 export GOOGLE_API_KEY="your_api_key_here"
 python translate.py \
     --input ./output/refined.jsonl \
@@ -477,7 +479,7 @@ python translate.py \
     --batch-size 1000 \
     --poll-interval 60
 
-# バッチAPI使用（50%割引・バランス重視）
+# Use Batch API (50% OFF, Balance Focused)
 python translate.py \
     --input ./output/refined.jsonl \
     --output ./output/translated.jsonl \
@@ -486,7 +488,7 @@ python translate.py \
     --batch-size 1000 \
     --poll-interval 60
 
-# テスト実行（最初の100件のみ処理）
+# Test Run (Process only first 100 items)
 python translate.py \
     --input ./output/refined.jsonl \
     --output ./output/test_batch.jsonl \
@@ -497,102 +499,102 @@ python translate.py \
     --count 100
 ```
 
-**改善内容:**
-- ✅ **確認プロンプト**: 処理実行前に送信データサイズ・推定料金を表示して確認
-- ✅ **処理件数制限**: `--count` オプションでテスト実行が可能
-- ✅ **リモートファイルの自動削除**: バッチ処理完了後、Google Files API にアップロードされたファイルを自動削除
-- ✅ **バッチ統計情報の表示**: 成功/失敗件数をリアルタイム表示
-- ✅ **モデル名の正規化**: プレフィックスの重複を自動回避
+**Improvements:**
+- ✅ **Confirmation Prompt**: Displays data size and estimated cost before execution.
+- ✅ **Count Limit**: Test execution possible with `--count` option.
+- ✅ **Auto-Verify Remote Files**: Automatically deletes uploaded files after batch completion.
+- ✅ **Batch Statistics**: Real-time display of success/failure counts.
+- ✅ **Model Name Normalization**: Automatically avoids prefix duplication.
 
-**実行例の出力:**
+**Execution Output Example:**
 ```
-バッチ翻訳対象: 12,897件 (モデル: gemini-2.0-flash)
-バッチAPIは通常料金の50%割引です
+Batch Translation Target: 12,897 items (Model: gemini-2.0-flash)
+Batch API is 50% off standard rates
 
-バッチ 1/13 を処理中... (1000件)
-リクエストファイルをアップロード中...
-アップロード完了: files/xxx
-バッチジョブを作成中...
-結果を取得中...
-  処理完了: 1000/1000 件成功  ← 新機能
-リモートファイル削除: files/xxx  ← 新機能
-バッチ 1 完了: 1000件翻訳成功
+Processing Batch 1/13... (1000 items)
+Uploading request file...
+Upload Complete: files/xxx
+Creating batch job...
+Retrieving results...
+  Processing Complete: 1000/1000 items successful  <-- New
+Remote file deleted: files/xxx  <-- New
+Batch 1 Complete: 1000 translations successful
 
-全バッチ処理完了: 12,897/12,897件翻訳成功
+All batches complete: 12,897/12,897 translations successful
 ```
 
-**バッチサイズの目安:**
+**Batch Size Guidelines:**
 
-| データ量 | 推奨バッチサイズ | 処理時間 |
+| Data Volume | Recommended Batch Size | Processing Time |
 |---------|----------------|----------|
-| <100件 | 通常API推奨 | 即座 |
-| 100-1000件 | 200-500件 | 10-30分 |
-| 1000-5000件 | 500-1000件 | 20-60分 |
-| >5000件 | **1000件** | 30-90分 |
+| <100 items | Standard API | Instant |
+| 100-1000 items | 200-500 items | 10-30 mins |
+| 1000-5000 items | 500-1000 items | 20-60 mins |
+| >5000 items | **1000 items** | 30-90 mins |
 
-**注意**: バッチAPIは非同期処理のため、完了まで時間がかかる場合があります（通常数分〜90分以内）。
+**Note**: Batch API is asynchronous, so it may take time to complete (usually minutes to 90 mins).
 
-**必要なパッケージ**:
+**Required Package**:
 ```bash
 pip install google-genai
 ```
 
-#### 料金目安
+#### Cost Estimates
 
-**簡易翻訳（通常モード）:**
+**Simple Translation (Normal Mode):**
 
-**10,000件の中国語メッセージの場合:**
+**For 10,000 Chinese messages:**
 
-| バックエンド | モデル | 推定料金 |
+| Backend | Model | Est. Cost |
 |-------------|--------|----------|
-| `gemini` | gemini-2.5-flash-lite | 約$0.04（約6円） |
-| `gemini` | gemini-2.0-flash | 約$0.15（約24円） |
-| `gemini-batch` | gemini-2.5-flash-lite | **約$0.02（約3円）** ← 最安 |
-| `gemini-batch` | gemini-2.0-flash | 約$0.08（約12円） |
+| `gemini` | gemini-2.5-flash-lite | Approx. $0.04 (approx. 6 JPY) |
+| `gemini` | gemini-2.0-flash | Approx. $0.15 (approx. 24 JPY) |
+| `gemini-batch` | gemini-2.5-flash-lite | **Approx. $0.02 (approx. 3 JPY)** <-- Lowest |
+| `gemini-batch` | gemini-2.0-flash | Approx. $0.08 (approx. 12 JPY) |
 
-**refined.jsonl の実データ（12,897件）の場合:**
+**For actual refined.jsonl data (12,897 items):**
 
-| バックエンド | モデル | 推定料金 |
+| Backend | Model | Est. Cost |
 |-------------|--------|----------|
-| `gemini` | gemini-2.5-flash-lite | 約$0.05（約8円） |
-| `gemini` | gemini-2.0-flash | 約$0.08（約13円） |
-| `gemini-batch` | gemini-2.5-flash-lite | **約$0.025（約4円）** ← 最安・推奨 |
-| `gemini-batch` | gemini-2.0-flash | 約$0.04（約6円） |
+| `gemini` | gemini-2.5-flash-lite | Approx. $0.05 (approx. 8 JPY) |
+| `gemini` | gemini-2.0-flash | Approx. $0.08 (approx. 13 JPY) |
+| `gemini-batch` | gemini-2.5-flash-lite | **Approx. $0.025 (approx. 4 JPY)** <-- Lowest / Recommended |
+| `gemini-batch` | gemini-2.0-flash | Approx. $0.04 (approx. 6 JPY) |
 
-**簡易翻訳の推奨モデル:**
-- **コスト最優先**: `gemini-2.5-flash-lite` + バッチAPI
-- **バランス**: `gemini-2.0-flash` + バッチAPI（実績あり）
+**Recommended Model for Simple Translation:**
+- **Cost Priority**: `gemini-2.5-flash-lite` + Batch API
+- **Balance**: `gemini-2.0-flash` + Batch API (Proven)
 
-※ 平均文字数11文字/メッセージで計算
+* Calculated based on average 11 characters/message
 
-**詳細翻訳（--detailed使用時）:**
+**Detailed Translation (with --detailed):**
 
-| メッセージ数 | モデル | 推定料金 |
+| Message Count | Model | Est. Cost |
 |-------------|--------|----------|
-| 100件 | gemini-2.0-flash | 約$0.20（約32円） |
-| 1,000件 | gemini-2.0-flash | 約$2.00（約320円） |
-| 10,000件 | gemini-2.0-flash | 約$20.00（約3,200円） |
+| 100 items | gemini-2.0-flash | Approx. $0.20 (approx. 32 JPY) |
+| 1,000 items | gemini-2.0-flash | Approx. $2.00 (approx. 320 JPY) |
+| 10,000 items | gemini-2.0-flash | Approx. $20.00 (approx. 3,200 JPY) |
 
-※ 詳細翻訳は通常翻訳の約20倍のトークンを消費
+* Detailed translation consumes approx. 20x more tokens than normal translation.
 
-**モデル別料金比較（詳細翻訳・10,000件の場合）:**
+**Model Cost Comparison (Detailed Translation - 10,000 items):**
 
-| モデル | 入力料金 | 出力料金 | 推定料金（標準） | 推定料金（バッチ） | 特徴 |
+| Model | Input Cost | Output Cost | Est. Cost (Std) | Est. Cost (Batch) | Features |
 |--------|---------|---------|----------------|------------------|------|
-| gemini-2.0-flash | $0.015/1M | $0.060/1M | 約$20.00（約3,200円） | 約$10.00（約1,600円） | バランス型 |
-| gemini-2.5-flash-lite | $0.10/1M | $0.40/1M | **約$8.83（約1,413円）** | **約$4.42（約707円）** | **最安・推奨** |
-| gemini-2.5-flash | $0.30/1M | $2.50/1M | 約$52.49（約8,398円） | 約$26.25（約4,199円） | 高品質 |
-| gemini-3-flash-preview | $0.50/1M | $3.00/1M | 約$64.15（約10,264円） | 約$32.08（約5,133円） | 最新 |
+| gemini-2.0-flash | $0.015/1M | $0.060/1M | Approx. $20.00 | Approx. $10.00 | Balanced |
+| gemini-2.5-flash-lite | $0.10/1M | $0.40/1M | **Approx. $8.83** | **Approx. $4.42** | **Lowest / Recommended** |
+| gemini-2.5-flash | $0.30/1M | $2.50/1M | Approx. $52.49 | Approx. $26.25 | High Quality |
+| gemini-3-flash-preview | $0.50/1M | $3.00/1M | Approx. $64.15 | Approx. $32.08 | Latest |
 
-**推奨モデル:**
-- **コスト重視**: `gemini-2.5-flash-lite` - 最も安価で詳細翻訳に十分な品質
-- **バランス重視**: `gemini-2.0-flash` - 実績があり安定した品質
-- **品質重視**: `gemini-2.5-flash` または `gemini-3-flash-preview` - より高度な分析が必要な場合
+**Recommended Models:**
+- **Cost Priority**: `gemini-2.5-flash-lite` - Cheapest, good enough for detailed translation.
+- **Balance Priority**: `gemini-2.0-flash` - Proven, stable quality.
+- **Quality Priority**: `gemini-2.5-flash` or `gemini-3-flash-preview` - For advanced analysis.
 
-※ 1ドル=160円で計算
-※ 平均20文字/メッセージ、入力830トークン、出力2000トークンで計算
+* Calculated at $1 = 160 JPY
+* Calculated based on avg 20 chars/msg, input 830 tokens, output 2000 tokens.
 
-#### 外部翻訳用にエクスポート
+#### Export for External Translation
 
 ```bash
 python translate.py \
@@ -601,65 +603,65 @@ python translate.py \
     --backend export
 ```
 
-#### 🧹 リモートファイルのクリーンアップ（オプション）
+#### 🧹 Remote File Cleanup (Optional)
 
-最新版の translate.py は自動的にリモートファイルを削除しますが、以前のテストで残っているファイルを削除する場合：
+The latest version of translate.py automatically deletes remote files, but to manually delete files left over from previous tests:
 
 ```bash
-# ファイル一覧を表示
+# List files
 python cleanup_remote_files.py --list
 
-# 24時間以上前のファイルを削除
+# Delete files older than 24 hours
 python cleanup_remote_files.py --delete-old --hours 24
 
-# すべてのファイルを削除
+# Delete all files
 python cleanup_remote_files.py --delete-all
 ```
 
-**詳細情報:**
-- クイックスタート: `CLEANUP_QUICKSTART.md`
-- 詳細ガイド: `CLEANUP_GUIDE.md`
+**More Info:**
+- Quickstart: `CLEANUP_QUICKSTART.md`
+- Detailed Guide: `CLEANUP_GUIDE.md`
 
-**注意:** Google Files API にアップロードされたファイルは48時間後に自動削除されますが、手動削除により即座にストレージを解放できます。
+**Note:** Files uploaded to Google Files API are automatically deleted after 48 hours, but manual deletion frees up storage immediately.
 
-### Step 5: 翻訳結果の表示
+### Step 5: View Translation Results
 
-翻訳結果（特に詳細翻訳）をブラウザで見やすく表示できるHTMLビューワーを用意しています。
+An HTML viewer is available to easily view translation results (especially detailed translations) in a browser.
 
-#### ビューワーの起動
+#### Launch Viewer
 
 ```bash
-# プロジェクトディレクトリで簡易HTTPサーバーを起動
+# Start simple HTTP server in project directory
 python -m http.server 8000
 
-# ブラウザで開く
+# Open in browser
 # http://localhost:8000/viewer.html
 ```
 
-#### 機能
+#### Features
 
-**データ読み込み:**
-- ファイルアップロード（ドラッグ&ドロップ対応）
-- クイックロードボタン（test_detailed.jsonl、detailed.jsonl、translated.jsonl）
+**Data Loading:**
+- File Upload (Drag & Drop supported)
+- Quick Load Buttons (test_detailed.jsonl, detailed.jsonl, translated.jsonl)
 
-**表示機能:**
-- メッセージ一覧と詳細表示の2ペイン構成
-- 原文、簡易翻訳、詳細翻訳を見やすく表示
-- 詳細翻訳のMarkdown表示（表、リスト、太字対応）
+**Display Features:**
+- 2-pane layout (Message list & Details)
+- Clear display of Original, Simple Translation, and Detailed Translation
+- Markdown rendering for detailed translation (Tables, Lists, Bold supported)
 
-**フィルタ・検索:**
-- テキスト検索
-- 言語フィルタ（全て/中国語のみ/日本語のみ）
-- 詳細翻訳フィルタ（全て/詳細翻訳あり/簡易翻訳のみ）
+**Filter & Search:**
+- Text Search
+- Language Filter (All / Chinese Only / Japanese Only)
+- Detailed Translation Filter (All / With Detailed Translation / Simple Translation Only)
 
-**キーボードショートカット:**
-- `↓` または `j`: 次のメッセージ
-- `↑` または `k`: 前のメッセージ
+**Keyboard Shortcuts:**
+- `↓` or `j`: Next message
+- `↑` or `k`: Previous message
 
-#### 使用例
+#### Usage Example
 
 ```bash
-# 1. 詳細翻訳を生成
+# 1. Generate detailed translation
 python translate.py \
     --input ./output/refined.jsonl \
     --output ./output/detailed.jsonl \
@@ -668,31 +670,31 @@ python translate.py \
     --model gemini-2.5-flash-lite \
     --count 10
 
-# 2. HTTPサーバー起動
+# 2. Start HTTP server
 python -m http.server 8000
 
-# 3. ブラウザでアクセス
+# 3. Access in browser
 # http://localhost:8000/viewer.html
 
-# 4. 「test_detailed.jsonl」または「detailed.jsonl」ボタンをクリック
+# 4. Click "test_detailed.jsonl" or "detailed.jsonl" button
 ```
 
-**スクリーンショット例:**
-- 左側: メッセージ一覧（検索・フィルタ機能付き）
-- 右側: 選択したメッセージの詳細表示
-  - 原文
-  - 簡易翻訳
-  - 詳細翻訳（単語分解、ニュアンス分析、返信案）
+**Screenshot Example:**
+- Left: Message List (With Search/Filter)
+- Right: Detailed View of Selected Message
+  - Original
+  - Simple Translation
+  - Detailed Translation (Vocabulary breakdown, Nuance analysis, Reply suggestions)
 
-### 一括実行
+### Bulk Execution
 
 ```bash
 ./run_pipeline.sh ./screenshots ./output
 ```
 
-## 出力形式
+## Output Format
 
-JSONL 形式で 1 行 1 メッセージ：
+JSONL format with 1 message per line:
 
 ```jsonl
 {"id": "msg_000001", "speaker": "user_a", "lang": "ja", "type": "text", "text": "美味しそう", "source_file": "CleanShot 2026-01-13 at 19.12.53@2x.png", "confidence": 0.91}
@@ -701,102 +703,102 @@ JSONL 形式で 1 行 1 メッセージ：
 {"id": "msg_000004", "timestamp": "2025-06-18T20:10:00+09:00", "speaker": "user_b", "lang": "zh", "type": "text", "text": "好吧，原来你也吃的面条。", "source_file": "CleanShot 2026-01-13 at 19.12.53@2x.png", "confidence": 0.99}
 ```
 
-### フィールド説明
+### Field Description
 
-| フィールド    | 説明                          | 例                           |
+| Field | Description | Example |
 | ------------- | ----------------------------- | ---------------------------- |
-| `id`          | 一意のメッセージ ID           | `msg_000001`                 |
-| `timestamp`   | ISO 8601 形式のタイムスタンプ | `2025-06-18T20:10:00+09:00`  |
-| `speaker`     | 話者                          | `user_a`, `user_b`, `system` |
-| `lang`        | 言語                          | `ja`, `zh`, `system`         |
-| `type`        | メッセージタイプ              | `text`, `image`, `system`    |
-| `text`        | メッセージ本文                |                              |
-| `reply_to`    | 引用返信の元テキスト（任意）  |                              |
-| `source_file` | 抽出元ファイル名              |                              |
-| `confidence`  | OCR 信頼度スコア（0-1）       | `0.95`                       |
-| `naturalness` | 日本語の自然さスコア（0-1）   | `1.0`                        |
-| `needs_review`| 確認が必要か                  | `true`                       |
-| `text_ja`     | 日本語翻訳（翻訳後）          |                              |
-| `text_ja_detailed` | 詳細翻訳（Markdown形式、--detailed使用時） | Markdown形式の学習用解説 |
+| `id` | Unique Message ID | `msg_000001` |
+| `timestamp` | Timestamp in ISO 8601 | `2025-06-18T20:10:00+09:00` |
+| `speaker` | Speaker | `user_a`, `user_b`, `system` |
+| `lang` | Language | `ja`, `zh`, `system` |
+| `type` | Message Type | `text`, `image`, `system` |
+| `text` | Message Body | |
+| `reply_to` | Source text for citation reply (optional) | |
+| `source_file` | Source Filename | |
+| `confidence` | OCR Confidence Score (0-1) | `0.95` |
+| `naturalness` | Japanese Naturalness Score (0-1) | `1.0` |
+| `needs_review`| Needs Review | `true` |
+| `text_ja` | Japanese Translation (After translation) | |
+| `text_ja_detailed` | Detailed Translation (Markdown, with --detailed) | Learning explanation in Markdown |
 
-## ディレクトリ構成
+## Directory Structure
 
 ```
 wechat_extractor/
-├── extract.py                  # メイン抽出スクリプト（デュアルOCR）
-├── dedupe.py                   # 重複除去スクリプト
-├── refine.py                   # 品質補正・評価スクリプト
-├── split_by_date.py            # 日毎ファイル分割スクリプト（新規）
-├── analyze.py                  # 分析・統計・検索スクリプト
-├── translate.py                # 翻訳追加スクリプト（ディレクトリ処理対応）
-├── cleanup_remote_files.py     # Google Files API クリーンアップ（新規）
-├── run_pipeline.sh             # 一括実行スクリプト
-├── config.yaml                 # 設定ファイル
-├── requirements.txt            # 依存パッケージ
-├── README.md                   # このファイル
-├── REVIEW_translate.md         # translate.py レビュー結果
-├── IMPROVEMENTS_APPLIED.md     # 実施した改善の詳細
-├── CLEANUP_QUICKSTART.md       # クリーンアップクイックスタート
-└── CLEANUP_GUIDE.md            # クリーンアップ詳細ガイド
+├── extract.py                  # Main extraction script (Dual OCR)
+├── dedupe.py                   # Deduplication script
+├── refine.py                   # Quality refinement/evaluation script
+├── split_by_date.py            # Daily split script (New)
+├── analyze.py                  # Analysis/Stats/Search script
+├── translate.py                # Translation script (Directory processing supported)
+├── cleanup_remote_files.py     # Google Files API Cleanup (New)
+├── run_pipeline.sh             # Batch execution script
+├── config.yaml                 # Configuration file
+├── requirements.txt            # Dependencies
+├── README.md                   # This file
+├── REVIEW_translate.md         # translate.py review results
+├── IMPROVEMENTS_APPLIED.md     # Details of improvements applied
+├── CLEANUP_QUICKSTART.md       # Cleanup Quickstart
+└── CLEANUP_GUIDE.md            # Cleanup Detailed Guide
 
 your_project/
-├── screenshots/        # 入力：スクリーンショット
+├── screenshots/        # Input: Screenshots
 │   ├── CleanShot 2026-01-13 at 19.12.53@2x.png
 │   ├── CleanShot 2026-01-13 at 19.12.54@2x.png
 │   └── ...
-└── output/             # 出力
-    ├── conversations.jsonl   # 抽出結果（生データ）
-    ├── deduped.jsonl         # 重複除去後
-    ├── refined.jsonl         # 補正後
-    ├── daily/                # 日毎分割ファイル（新規）
+└── output/             # Output
+    ├── conversations.jsonl   # Extraction result (Raw)
+    ├── deduped.jsonl         # After deduplication
+    ├── refined.jsonl         # After refinement
+    ├── daily/                # Split by date (New)
     │   ├── 2025-05-25.jsonl
     │   ├── 2025-05-26.jsonl
     │   └── ...
-    ├── translated/           # ディレクトリ翻訳結果（新規）
+    ├── translated/           # Directory translation results (New)
     │   ├── 2025-05-25_translated.jsonl
     │   ├── 2025-05-26_translated.jsonl
     │   └── ...
-    ├── checkpoint.json       # チェックポイント
-    └── report.txt            # 分析レポート
+    ├── checkpoint.json       # Checkpoint
+    └── report.txt            # Analysis report
 ```
 
-## 処理速度目安
+## Processing Speed Estimation
 
-| 環境          | 速度（1 枚あたり） | 10,000 枚の処理時間 |
+| Environment | Speed (per image) | Time for 10,000 images |
 | ------------- | ------------------ | ------------------- |
-| RTX 3060 Ti   | 約 0.2 秒          | 約 30-40 分         |
-| RTX 4090      | 約 0.1 秒          | 約 15-20 分         |
-| CPU (Core i7) | 約 3-5 秒          | 約 8-14 時間        |
+| RTX 3060 Ti | Approx. 0.2s | Approx. 30-40 mins |
+| RTX 4090 | Approx. 0.1s | Approx. 15-20 mins |
+| CPU (Core i7) | Approx. 3-5s | Approx. 8-14 hours |
 
-※ デュアル OCR モデル使用時。初回実行時はモデルダウンロードに追加時間がかかります。
+* When using Dual OCR Models. First run will take extra time for model download.
 
-## 技術的な仕組み
+## Technical Details
 
-### デュアル OCR モデル
+### Dual OCR Models
 
-WeChat の会話は日本語と中国語が混在するため、位置情報に基づいて適切な OCR モデルを選択します：
+Since WeChat conversations mix Japanese and Chinese, the appropriate OCR model is selected based on location information:
 
-1. **中国語 OCR**で全テキストの位置を検出
-2. 各テキストブロックの位置を判定：
-   - **右側**（User A）→ 日本語 OCR で再認識
-   - **左側**（User B）→ 中国語 OCR の結果をそのまま使用
+1. Detect all text positions with **Chinese OCR**
+2. Determine position of each text block:
+   - **Right Side** (User A) -> Re-recognize with Japanese OCR
+   - **Left Side** (User B) -> Use Chinese OCR result as is
 
 ```
 ┌────────────────────────────────────────┐
-│              2025-6-18 20:03           │  ← タイムスタンプ（中央）
+│              2025-6-18 20:03           │  ← Timestamp (Center)
 ├────────────────────────────────────────┤
 │                          ┌───────────┐ │
-│                          │ 美味しそう │ │  ← 右側 = user_a（日本語OCR）
+│                          │ 美味しそう │ │  ← Right = user_a (Japanese OCR)
 │                          └───────────┘ │
 │  ┌─────────────────┐                   │
-│  │ 吃晚饭了吗？      │                   │  ← 左側 = user_b（中国語OCR）
+│  │ 吃晚饭了吗？      │                   │  ← Left = user_b (Chinese OCR)
 │  └─────────────────┘                   │
 └────────────────────────────────────────┘
 ```
 
-### 認識精度の改善結果
+### Recognition Accuracy Improvements
 
-| 改善前（中国語 OCR のみ） | 改善後（デュアル OCR）                           |
+| Before (Chinese OCR Only) | After (Dual OCR) |
 | ------------------------- | ------------------------------------------------ |
 | 羡                        | 羨ましい                                         |
 | 食！                      | もう食べたよ！カレーラーメン                     |
@@ -805,118 +807,118 @@ WeChat の会話は日本語と中国語が混在するため、位置情報に�
 | 炭酸買来                  | 炭酸を買いに来た                                 |
 | 真暗                      | こっちはもう真っ暗だよ                           |
 
-## トラブルシューティング
+## Troubleshooting
 
-### PaddleOCR v3.x のエラー
+### PaddleOCR v3.x Errors
 
 ```
 ValueError: Unknown argument: use_gpu
 AttributeError: 'AnalysisConfig' object has no attribute 'set_optimization_level'
 ```
 
-**原因**: PaddleOCR v3.x は API が大幅に変更され、互換性問題があります。
+**Cause**: PaddleOCR v3.x has significant API changes and compatibility issues.
 
-**解決策**: v2.9.1 を使用してください。
+**Solution**: Please use v2.9.1.
 
 ```bash
 pip uninstall paddleocr paddlex -y
 pip install "paddleocr==2.9.1"
 ```
 
-### PaddlePaddle のインストールエラー
+### PaddlePaddle Installation Errors
 
 ```
 ERROR: No matching distribution found for paddlepaddle-gpu==2.6.1
 ```
 
-**原因**: PyPI や Baidu ミラーには限られたバージョンのみ配布されています。
+**Cause**: Only limited versions are distributed on PyPI and Baidu mirrors.
 
-**解決策**: 公式サーバーからインストール。
+**Solution**: Install from the official server.
 
 ```bash
 # CUDA 11.8
 pip install paddlepaddle-gpu -i https://www.paddlepaddle.org.cn/packages/stable/cu118/
 ```
 
-### CUDA 関連エラー
+### CUDA Related Errors
 
 ```bash
-# CUDAバージョンとPaddlePaddleの対応を確認
+# Check correspondence between CUDA version and PaddlePaddle
 python -c "import paddle; paddle.utils.run_check()"
 ```
 
-### 認識精度が低い場合
+### Low Recognition Accuracy
 
-1. 画像解像度を確認（Retina @2x 推奨）
-2. スクリーンショットの品質を確認
-3. 一部の誤認識は後処理で修正可能
+1. Check image resolution (Retina @2x recommended)
+2. Check screenshot quality
+3. Some misrecognitions can be corrected in post-processing
 
-## 既知の制限事項
+## Known Limitations
 
-1. **タイムスタンプの誤認識**: 一部のタイムスタンプがメッセージとして認識されることがある
-2. **メッセージの分割**: 長いメッセージが複数行に分割されることがある
-3. **絵文字の認識**: 絵文字は認識されないか、文字化けすることがある
-4. **一部の誤字**: 類似した漢字（健康 → 建康、炭酸 → 提酸）が誤認識されることがある
+1. **Timestamp Misrecognition**: Some timestamps may be recognized as messages.
+2. **Message Splitting**: Long messages may be split into multiple lines.
+3. **Emoji Recognition**: Emojis may not be recognized or may be garbled.
+4. **Some Typos**: Similar Kanji (e.g. 健康 -> 建康, 炭酸 -> 提酸) may be misrecognized.
 
-## 🆕 最近の改善
+## 🆕 Recent Improvements
 
-### 2026-01-15: translate.py の改善
+### 2026-01-15: translate.py Improvements
 
-1. **詳細翻訳モードの追加** (NEW!)
-   - 中国語学習に最適化された詳細解説形式
-   - 単語分解（ピンイン、HSKレベル、文法解説）
-   - 全体のニュアンス分析（感情・関係性・文化的背景）
-   - 3パターンの返信提案（優しい/冗談混じり/包容的）
-   - 実装箇所: translate.py:163-344, translate.py:670-689
-   - 使用方法: `--detailed` フラグを追加
+1. **Added Detailed Translation Mode** (NEW!)
+   - Detailed explanation format optimized for Chinese learning
+   - Word decomposition (Pinyin, HSK Level, Grammar explanation)
+   - Overall nuance analysis (Emotion, Relationship, Cultural background)
+   - 3 reply suggestions (Gentle/Joking/Inclusive)
+   - Implementation: translate.py:163-344, translate.py:670-689
+   - Usage: Add `--detailed` flag
 
-2. **確認プロンプトの追加** (NEW!)
-   - 処理実行前に送信データサイズ・推定料金を表示
-   - Enterキーで続行、nでキャンセル
-   - 誤操作による不要なコスト発生を防止
-   - 実装箇所: translate.py:118-163
+2. **Added Confirmation Prompt** (NEW!)
+   - Displays data size and estimated cost before execution
+   - Enter to continue, n to cancel
+   - Prevents unnecessary costs due to accidental operation
+   - Implementation: translate.py:118-163
 
-3. **処理件数制限機能の追加** (NEW!)
-   - `--count` オプションで処理する中国語メッセージ数を制限
-   - テスト実行やコスト管理に便利
-   - 例: `--count 10` で最初の10件のみ処理
-   - 実装箇所: translate.py:609-610
+3. **Added Count Limit Function** (NEW!)
+   - Limit the number of Chinese messages processed with `--count` option
+   - Convenient for test runs and cost management
+   - Example: `--count 10` processes only the first 10 items
+   - Implementation: translate.py:609-610
 
-4. **リモートファイルの自動削除** (優先度: 高)
-   - Google Files API にアップロードされたファイルを自動削除
-   - ストレージクォータの節約とリソース管理の適正化
-   - 実装箇所: translate.py:336-341
+4. **Automatic Remote File Deletion** (Priority: High)
+   - Automatically deletes files uploaded to Google Files API
+   - Saves storage quota and optimizes resource management
+   - Implementation: translate.py:336-341
 
-5. **バッチ統計情報の表示** (優先度: 中)
-   - 成功/失敗件数をリアルタイム表示
-   - 問題の早期発見が可能
-   - 実装箇所: translate.py:279-287
+5. **Batch Statistics Display** (Priority: Medium)
+   - Real-time display of success/failure counts
+   - Allows early detection of issues
+   - Implementation: translate.py:279-287
 
-6. **モデル名の正規化** (優先度: 低)
-   - `models/` プレフィックスの重複を自動回避
-   - より堅牢なコード
-   - 実装箇所: translate.py:246-249
+6. **Model Name Normalization** (Priority: Low)
+   - Automatically avoids duplication of `models/` prefix
+   - More robust code
+   - Implementation: translate.py:246-249
 
-### 新規ツール: cleanup_remote_files.py
+### New Tool: cleanup_remote_files.py
 
-Google Files API に残っている古いファイルを削除するツールを追加：
-- ファイル一覧の表示
-- 古いファイルのみ削除（24時間以上前など）
-- すべてのファイルを削除
-- 安全な削除（確認プロンプト付き）
+Added a tool to delete old files remaining in Google Files API:
+- List files
+- Delete only old files (e.g. older than 24 hours)
+- Delete all files
+- Safe deletion (with confirmation prompt)
 
-**詳細情報:**
-- レビュー結果: `REVIEW_translate.md`
-- 改善内容: `IMPROVEMENTS_APPLIED.md`
-- クリーンアップガイド: `CLEANUP_GUIDE.md`, `CLEANUP_QUICKSTART.md`
+**More Info:**
+- Review Results: `REVIEW_translate.md`
+- Improvement Details: `IMPROVEMENTS_APPLIED.md`
+- Cleanup Guide: `CLEANUP_GUIDE.md`, `CLEANUP_QUICKSTART.md`
 
-## 今後の拡張予定
+## Future Roadmap
 
-- [ ] セマンティック検索（ベクトル DB 連携）
-- [ ] 感情分析
-- [ ] 会話のトピック分類
+- [ ] Semantic Search (Vector DB integration)
+- [ ] Sentiment Analysis
+- [ ] Conversation Topic Classification
 - [ ] Web UI
 
-## ライセンス
+## License
 
 MIT License

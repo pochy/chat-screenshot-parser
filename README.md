@@ -293,12 +293,12 @@ Adds Japanese translations to Chinese messages.
 
 #### Translation Backend Comparison
 
-| Backend | Cost | Speed | Privacy | Detailed Translation | Use Case |
-|-------------|--------|------|-------------|---------|------|
-| `ollama` | Free | GPU Dep | Local Only | ❌ | Privacy Focused |
-| `gemini` | Paid | Fast | Cloud Sent | ✅ | Real-time, Learning |
-| `gemini-batch` | **50% OFF** | Async | Cloud Sent | ❌ | Bulk Translation (Recommended) |
-| `export` | - | - | - | ❌ | External Tools |
+| Backend        | Cost        | Speed   | Privacy    | Detailed Translation | Use Case                       |
+| -------------- | ----------- | ------- | ---------- | -------------------- | ------------------------------ |
+| `ollama`       | Free        | GPU Dep | Local Only | ❌                    | Privacy Focused                |
+| `gemini`       | Paid        | Fast    | Cloud Sent | ✅                    | Real-time, Learning            |
+| `gemini-batch` | **50% OFF** | Async   | Cloud Sent | ❌                    | Bulk Translation (Recommended) |
+| `export`       | -           | -       | -          | ❌                    | External Tools                 |
 
 #### Using Ollama (Local LLM, Free)
 
@@ -429,10 +429,10 @@ python translate.py \
 
 ## Chinese Decomposition
 
-| Word | Part of Speech | Pinyin | Meaning | New HSK | Explanation |
-| :-- | :---- | :---------- | :------- | :--- | :----------- |
-| 晚饭 | Noun | wǎnfàn | Dinner | 2 | Meal eaten in the evening. |
-| 吃 | Verb | chī | Eat | 1 | Basic verb. Act of eating. |
+| Word | Part of Speech | Pinyin | Meaning | New HSK | Explanation                |
+| :--- | :------------- | :----- | :------ | :------ | :------------------------- |
+| 晚饭 | Noun           | wǎnfàn | Dinner  | 2       | Meal eaten in the evening. |
+| 吃   | Verb           | chī    | Eat     | 1       | Basic verb. Act of eating. |
 ...
 
 ## Overall Nuance
@@ -477,7 +477,8 @@ python translate.py \
     --backend gemini-batch \
     --model gemini-2.5-flash-lite \
     --batch-size 1000 \
-    --poll-interval 60
+    --poll-interval 60 \
+    --max-retries 1
 
 # Use Batch API (50% OFF, Balance Focused)
 python translate.py \
@@ -486,7 +487,8 @@ python translate.py \
     --backend gemini-batch \
     --model gemini-2.0-flash \
     --batch-size 1000 \
-    --poll-interval 60
+    --poll-interval 60 \
+    --max-retries 1
 
 # Test Run (Process only first 100 items)
 python translate.py \
@@ -496,7 +498,8 @@ python translate.py \
     --model gemini-2.5-flash-lite \
     --batch-size 100 \
     --poll-interval 30 \
-    --count 100
+    --count 100 \
+    --max-retries 1
 ```
 
 **Improvements:**
@@ -505,6 +508,8 @@ python translate.py \
 - ✅ **Auto-Verify Remote Files**: Automatically deletes uploaded files after batch completion.
 - ✅ **Batch Statistics**: Real-time display of success/failure counts.
 - ✅ **Model Name Normalization**: Automatically avoids prefix duplication.
+- ✅ **Retry failed requests**: Re-run only the untranslated items using `--max-retries`
+
 
 **Execution Output Example:**
 ```
@@ -525,12 +530,12 @@ All batches complete: 12,897/12,897 translations successful
 
 **Batch Size Guidelines:**
 
-| Data Volume | Recommended Batch Size | Processing Time |
-|---------|----------------|----------|
-| <100 items | Standard API | Instant |
-| 100-1000 items | 200-500 items | 10-30 mins |
-| 1000-5000 items | 500-1000 items | 20-60 mins |
-| >5000 items | **1000 items** | 30-90 mins |
+| Data Volume     | Recommended Batch Size | Processing Time |
+| --------------- | ---------------------- | --------------- |
+| <100 items      | Standard API           | Instant         |
+| 100-1000 items  | 200-500 items          | 10-30 mins      |
+| 1000-5000 items | 500-1000 items         | 20-60 mins      |
+| >5000 items     | **1000 items**         | 30-90 mins      |
 
 **Note**: Batch API is asynchronous, so it may take time to complete (usually minutes to 90 mins).
 
@@ -545,21 +550,21 @@ pip install google-genai
 
 **For 10,000 Chinese messages:**
 
-| Backend | Model | Est. Cost |
-|-------------|--------|----------|
-| `gemini` | gemini-2.5-flash-lite | Approx. $0.04 (approx. 6 JPY) |
-| `gemini` | gemini-2.0-flash | Approx. $0.15 (approx. 24 JPY) |
+| Backend        | Model                 | Est. Cost                                    |
+| -------------- | --------------------- | -------------------------------------------- |
+| `gemini`       | gemini-2.5-flash-lite | Approx. $0.04 (approx. 6 JPY)                |
+| `gemini`       | gemini-2.0-flash      | Approx. $0.15 (approx. 24 JPY)               |
 | `gemini-batch` | gemini-2.5-flash-lite | **Approx. $0.02 (approx. 3 JPY)** <-- Lowest |
-| `gemini-batch` | gemini-2.0-flash | Approx. $0.08 (approx. 12 JPY) |
+| `gemini-batch` | gemini-2.0-flash      | Approx. $0.08 (approx. 12 JPY)               |
 
 **For actual refined.jsonl data (12,897 items):**
 
-| Backend | Model | Est. Cost |
-|-------------|--------|----------|
-| `gemini` | gemini-2.5-flash-lite | Approx. $0.05 (approx. 8 JPY) |
-| `gemini` | gemini-2.0-flash | Approx. $0.08 (approx. 13 JPY) |
+| Backend        | Model                 | Est. Cost                                                   |
+| -------------- | --------------------- | ----------------------------------------------------------- |
+| `gemini`       | gemini-2.5-flash-lite | Approx. $0.05 (approx. 8 JPY)                               |
+| `gemini`       | gemini-2.0-flash      | Approx. $0.08 (approx. 13 JPY)                              |
 | `gemini-batch` | gemini-2.5-flash-lite | **Approx. $0.025 (approx. 4 JPY)** <-- Lowest / Recommended |
-| `gemini-batch` | gemini-2.0-flash | Approx. $0.04 (approx. 6 JPY) |
+| `gemini-batch` | gemini-2.0-flash      | Approx. $0.04 (approx. 6 JPY)                               |
 
 **Recommended Model for Simple Translation:**
 - **Cost Priority**: `gemini-2.5-flash-lite` + Batch API
@@ -569,22 +574,22 @@ pip install google-genai
 
 **Detailed Translation (with --detailed):**
 
-| Message Count | Model | Est. Cost |
-|-------------|--------|----------|
-| 100 items | gemini-2.0-flash | Approx. $0.20 (approx. 32 JPY) |
-| 1,000 items | gemini-2.0-flash | Approx. $2.00 (approx. 320 JPY) |
-| 10,000 items | gemini-2.0-flash | Approx. $20.00 (approx. 3,200 JPY) |
+| Message Count | Model            | Est. Cost                          |
+| ------------- | ---------------- | ---------------------------------- |
+| 100 items     | gemini-2.0-flash | Approx. $0.20 (approx. 32 JPY)     |
+| 1,000 items   | gemini-2.0-flash | Approx. $2.00 (approx. 320 JPY)    |
+| 10,000 items  | gemini-2.0-flash | Approx. $20.00 (approx. 3,200 JPY) |
 
 * Detailed translation consumes approx. 20x more tokens than normal translation.
 
 **Model Cost Comparison (Detailed Translation - 10,000 items):**
 
-| Model | Input Cost | Output Cost | Est. Cost (Std) | Est. Cost (Batch) | Features |
-|--------|---------|---------|----------------|------------------|------|
-| gemini-2.0-flash | $0.015/1M | $0.060/1M | Approx. $20.00 | Approx. $10.00 | Balanced |
-| gemini-2.5-flash-lite | $0.10/1M | $0.40/1M | **Approx. $8.83** | **Approx. $4.42** | **Lowest / Recommended** |
-| gemini-2.5-flash | $0.30/1M | $2.50/1M | Approx. $52.49 | Approx. $26.25 | High Quality |
-| gemini-3-flash-preview | $0.50/1M | $3.00/1M | Approx. $64.15 | Approx. $32.08 | Latest |
+| Model                  | Input Cost | Output Cost | Est. Cost (Std)   | Est. Cost (Batch) | Features                 |
+| ---------------------- | ---------- | ----------- | ----------------- | ----------------- | ------------------------ |
+| gemini-2.0-flash       | $0.015/1M  | $0.060/1M   | Approx. $20.00    | Approx. $10.00    | Balanced                 |
+| gemini-2.5-flash-lite  | $0.10/1M   | $0.40/1M    | **Approx. $8.83** | **Approx. $4.42** | **Lowest / Recommended** |
+| gemini-2.5-flash       | $0.30/1M   | $2.50/1M    | Approx. $52.49    | Approx. $26.25    | High Quality             |
+| gemini-3-flash-preview | $0.50/1M   | $3.00/1M    | Approx. $64.15    | Approx. $32.08    | Latest                   |
 
 **Recommended Models:**
 - **Cost Priority**: `gemini-2.5-flash-lite` - Cheapest, good enough for detailed translation.
@@ -705,20 +710,20 @@ JSONL format with 1 message per line:
 
 ### Field Description
 
-| Field | Description | Example |
-| ------------- | ----------------------------- | ---------------------------- |
-| `id` | Unique Message ID | `msg_000001` |
-| `timestamp` | Timestamp in ISO 8601 | `2025-06-18T20:10:00+09:00` |
-| `speaker` | Speaker | `user_a`, `user_b`, `system` |
-| `lang` | Language | `ja`, `zh`, `system` |
-| `type` | Message Type | `text`, `image`, `system` |
-| `text` | Message Body | |
-| `reply_to` | Source text for citation reply (optional) | |
-| `source_file` | Source Filename | |
-| `confidence` | OCR Confidence Score (0-1) | `0.95` |
-| `naturalness` | Japanese Naturalness Score (0-1) | `1.0` |
-| `needs_review`| Needs Review | `true` |
-| `text_ja` | Japanese Translation (After translation) | |
+| Field              | Description                                      | Example                          |
+| ------------------ | ------------------------------------------------ | -------------------------------- |
+| `id`               | Unique Message ID                                | `msg_000001`                     |
+| `timestamp`        | Timestamp in ISO 8601                            | `2025-06-18T20:10:00+09:00`      |
+| `speaker`          | Speaker                                          | `user_a`, `user_b`, `system`     |
+| `lang`             | Language                                         | `ja`, `zh`, `system`             |
+| `type`             | Message Type                                     | `text`, `image`, `system`        |
+| `text`             | Message Body                                     |                                  |
+| `reply_to`         | Source text for citation reply (optional)        |                                  |
+| `source_file`      | Source Filename                                  |                                  |
+| `confidence`       | OCR Confidence Score (0-1)                       | `0.95`                           |
+| `naturalness`      | Japanese Naturalness Score (0-1)                 | `1.0`                            |
+| `needs_review`     | Needs Review                                     | `true`                           |
+| `text_ja`          | Japanese Translation (After translation)         |                                  |
 | `text_ja_detailed` | Detailed Translation (Markdown, with --detailed) | Learning explanation in Markdown |
 
 ## Directory Structure
@@ -764,11 +769,11 @@ your_project/
 
 ## Processing Speed Estimation
 
-| Environment | Speed (per image) | Time for 10,000 images |
-| ------------- | ------------------ | ------------------- |
-| RTX 3060 Ti | Approx. 0.2s | Approx. 30-40 mins |
-| RTX 4090 | Approx. 0.1s | Approx. 15-20 mins |
-| CPU (Core i7) | Approx. 3-5s | Approx. 8-14 hours |
+| Environment   | Speed (per image) | Time for 10,000 images |
+| ------------- | ----------------- | ---------------------- |
+| RTX 3060 Ti   | Approx. 0.2s      | Approx. 30-40 mins     |
+| RTX 4090      | Approx. 0.1s      | Approx. 15-20 mins     |
+| CPU (Core i7) | Approx. 3-5s      | Approx. 8-14 hours     |
 
 * When using Dual OCR Models. First run will take extra time for model download.
 
@@ -798,7 +803,7 @@ Since WeChat conversations mix Japanese and Chinese, the appropriate OCR model i
 
 ### Recognition Accuracy Improvements
 
-| Before (Chinese OCR Only) | After (Dual OCR) |
+| Before (Chinese OCR Only) | After (Dual OCR)                                 |
 | ------------------------- | ------------------------------------------------ |
 | 羡                        | 羨ましい                                         |
 | 食！                      | もう食べたよ！カレーラーメン                     |

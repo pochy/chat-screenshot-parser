@@ -140,7 +140,7 @@ def translate_with_ollama_detailed(
         timeout: タイムアウト秒数（詳細翻訳は時間がかかるため長めに設定）
 
     Returns:
-        Markdown形式の詳細解説、失敗時はNone
+        JSON形式の詳細解説（文字列）、失敗時はNone
     """
     try:
         import requests
@@ -173,6 +173,11 @@ def translate_with_ollama_detailed(
 
         if response.status_code == 200:
             detailed_translation = response.json().get("response", "").strip()
+            
+            # JSONを抽出（Markdownコードブロックで囲まれている場合にも対応）
+            json_str = extract_json_from_response(detailed_translation)
+            if json_str:
+                detailed_translation = json_str
 
             # バリデーション
             if validate_detailed_response(detailed_translation):
@@ -191,7 +196,12 @@ def translate_with_ollama_detailed(
         return None
 
 
-def confirm_translation(messages: List[dict], detailed: bool = False, model: str = "gemini-2.0-flash") -> bool:
+def confirm_translation(
+    messages: List[dict],
+    detailed: bool = False,
+    model: str = "gemini-2.0-flash",
+    use_batch_pricing: bool = False
+) -> bool:
     """翻訳実行の確認プロンプトを表示
 
     Args:
@@ -208,10 +218,20 @@ def confirm_translation(messages: List[dict], detailed: bool = False, model: str
     # コスト推定
     avg_chars = sum(len(m.get("text", "")) for m in messages) / len(messages) if messages else 0
     if detailed:
-        cost_estimate = estimate_detailed_cost(len(messages), int(avg_chars))
+        cost_estimate = estimate_detailed_cost(
+            len(messages),
+            int(avg_chars),
+            model=model,
+            use_batch_pricing=use_batch_pricing
+        )
         mode_str = "詳細翻訳"
     else:
-        cost_estimate = estimate_simple_cost(len(messages), int(avg_chars))
+        cost_estimate = estimate_simple_cost(
+            len(messages),
+            int(avg_chars),
+            model=model,
+            use_batch_pricing=use_batch_pricing
+        )
         mode_str = "簡易翻訳"
 
     # 確認プロンプト表示
@@ -223,6 +243,12 @@ def confirm_translation(messages: List[dict], detailed: bool = False, model: str
     print(f"送信データサイズ: {data_size['size_str']}")
     print(f"推定料金: ${cost_estimate['estimated_cost_usd']} (約{cost_estimate['estimated_cost_jpy']}円)")
     print(f"推定トークン: 入力 {cost_estimate['estimated_input_tokens']}, 出力 {cost_estimate['estimated_output_tokens']}")
+    if cost_estimate.get("pricing_model"):
+        pricing_note = cost_estimate.get("pricing_note")
+        pricing_tier = cost_estimate.get("pricing_tier")
+        print(f"料金モデル: {cost_estimate['pricing_model']} ({pricing_tier})")
+        if pricing_note:
+            print(f"料金注記: {pricing_note}")
     print("="*60)
 
     # ユーザー入力
@@ -289,109 +315,126 @@ DETAILED_TRANSLATION_PROMPT = """あなたは日本人学習者を支援する�
 
 **重要：まず原文に誤字・脱字がないか確認し、もし誤りがあれば修正してから解説を進めてください。**
 
-以下の中国語テキストを分析し、下記のフォーマットで日本語で説明してください：
-
-## 原文
+以下の中国語テキストを分析し、JSON形式で出力してください：
 
 {text}
 
-**誤字がある場合のみ：**
-※自然な中国語：**[修正後の正しい中国語]**
-※文脈上、「[誤字]」ではなく **「[正しい字]」** の誤字だと判断します。
+**出力形式：**
+以下のJSON構造で出力してください。誤字がない場合は`corrected_text`と`typo_note`フィールドを省略してください。
 
----
-
-## 日本語の意味（自然訳）
-
-自然で流暢な日本語訳を提供してください。直訳ではなく、日本語として自然な表現にしてください。
-**誤字があった場合は、修正後の中国語を基に翻訳してください。**
-
----
-
-## 中国語の分解解説
-
-以下のマークダウンテーブル形式で、テキスト中の重要な単語・フレーズを解説してください：
-
-| 単語 | 品詞 | ピンイン | 意味 | 新HSK | 解説 |
-| :-- | :---- | :---------- | :------- | :--- | :----------- |
-
-**注意点：**
-- テキスト中の主要な単語・慣用句を全て含めること
-- 新HSKレベル（1-9）を正確に記載
-- 「解説」列では、この文脈での役割や感情的ニュアンスを説明
-- 誤字があった場合は、正しい単語を解説に含めること
-
-**誤字がある場合のみ：**
-🔎 **補足**
-* 「[誤字を含む表現]」＝[不自然な意味]、という意味になり不自然
-
----
-
-## 全体のニュアンス
-
-メッセージ全体の感情的トーン、二人の関係性、文化的背景を分析してください。
-
-**分析ポイント：**
-- 感情的トーン（優しい、心配、楽しい、など）
-- 関係性（恋人、友人、親密度など）
-- 文化的・社会的背景
-- 込められた意図や期待
-
-箇条書きで、重要な点を**太字**で強調してください。
-
----
-
-## 日本語での返事案（3パターン）
-
-相手のメッセージに対する返答例を、3つの異なる口調で提案してください：
-
-### 1. **親近感UP案**
-
-**返信例：**
-[親密で思いやりのある返答]
-**理由：**
-[なぜこの返答が効果的か]
-
----
-
-### 2. **ユーモア案**
-
-**返信例：**
-[明るくカジュアルな返答]
-**理由：**
-[なぜこの返答が効果的か]
-
----
-
-### 3. **誠実・優しさ案**
-
-**返信例：**
-[相手を安心させる包容力のある返答]
-**理由：**
-[なぜこの返答が効果的か]
-
----
+```json
+{{
+  "original_text": "原文の中国語テキスト",
+  "corrected_text": "誤字修正後の中国語（誤字がある場合のみ）",
+  "typo_note": "誤字の説明（誤字がある場合のみ）",
+  "natural_translation": "自然で流暢な日本語訳",
+  "word_analysis": [
+    {{
+      "word": "単語",
+      "part_of_speech": "品詞",
+      "pinyin": "ピンイン",
+      "meaning": "意味",
+      "hsk_level": "新HSKレベル（1-9）",
+      "explanation": "この文脈での役割や感情的ニュアンス"
+    }}
+  ],
+  "nuance_analysis": {{
+    "emotional_tone": "感情的トーン（優しい、心配、楽しい、など）",
+    "relationship": "関係性（恋人、友人、親密度など）",
+    "cultural_background": "文化的・社会的背景",
+    "intention": "込められた意図や期待",
+    "summary": "全体のニュアンスの要約"
+  }},
+  "reply_suggestions": [
+    {{
+      "type": "親近感UP案",
+      "reply": "親密で思いやりのある返答",
+      "reason": "なぜこの返答が効果的か"
+    }},
+    {{
+      "type": "ユーモア案",
+      "reply": "明るくカジュアルな返答",
+      "reason": "なぜこの返答が効果的か"
+    }},
+    {{
+      "type": "誠実・優しさ案",
+      "reply": "相手を安心させる包容力のある返答",
+      "reason": "なぜこの返答が効果的か"
+    }}
+  ]
+}}
+```
 
 **重要な指示：**
-- 原文に誤字がある場合は、必ず「原文」セクションで修正版を示すこと
-- 誤字がない場合は、修正に関する記述を省略すること
-- マークダウンテーブルは正しい形式（|で区切り、:--で左揃え）で出力
-- 全てのセクションを必ず含めること
-- 日本語は自然で読みやすい表現を使用
-- 中国語学習者の視点で、具体的で実用的な解説を提供
+- 出力は必ず有効なJSON形式であること（Markdownコードブロックは不要、JSONのみ）
+- 原文に誤字がある場合は、`corrected_text`と`typo_note`を含めること
+- 誤字がない場合は、`corrected_text`と`typo_note`フィールドを省略すること
+- `word_analysis`には、テキスト中の主要な単語・慣用句を全て含めること
+- 新HSKレベル（1-9）を正確に記載すること
+- 日本語は自然で読みやすい表現を使用すること
+- 中国語学習者の視点で、具体的で実用的な解説を提供すること
 """
 
 
+def extract_json_from_response(response: str) -> Optional[str]:
+    """レスポンスからJSONを抽出（Markdownコードブロックで囲まれている場合にも対応）"""
+    response = response.strip()
+    
+    # Markdownコードブロックで囲まれている場合
+    if response.startswith("```"):
+        # ```json または ``` で始まる場合
+        lines = response.split("\n")
+        # 最初の行（```json など）と最後の行（```）を除去
+        json_lines = []
+        in_code_block = False
+        for line in lines:
+            if line.strip().startswith("```"):
+                in_code_block = not in_code_block
+                continue
+            if in_code_block:
+                json_lines.append(line)
+        return "\n".join(json_lines)
+    
+    # そのままJSONの場合
+    return response
+
+
 def validate_detailed_response(response: str) -> bool:
-    """詳細翻訳レスポンスに必要なセクションが全て含まれているか検証"""
-    required_sections = [
-        "## 原文",
-        "## 日本語の意味（自然訳）",
-        "## 中国語の分解解説",
-        "## 全体のニュアンス",
-        "## 日本語での返事案"
-    ]
-    return all(section in response for section in required_sections)
+    """詳細翻訳レスポンスが有効なJSON形式で必要なフィールドを含んでいるか検証"""
+    try:
+        # JSONを抽出
+        json_str = extract_json_from_response(response)
+        if not json_str:
+            return False
+        
+        # JSONをパース
+        data = json.loads(json_str)
+        
+        # 必須フィールドの確認
+        required_fields = [
+            "original_text",
+            "natural_translation",
+            "word_analysis",
+            "nuance_analysis",
+            "reply_suggestions"
+        ]
+        
+        # 全ての必須フィールドが存在するか確認
+        if not all(field in data for field in required_fields):
+            return False
+        
+        # 各フィールドの型と内容を確認
+        if not isinstance(data.get("word_analysis"), list):
+            return False
+        if not isinstance(data.get("nuance_analysis"), dict):
+            return False
+        if not isinstance(data.get("reply_suggestions"), list) or len(data.get("reply_suggestions", [])) != 3:
+            return False
+        
+        return True
+    except json.JSONDecodeError:
+        # JSON形式でない場合はFalse
+        return False
 
 
 def calculate_data_size(messages: List[dict]) -> dict:
@@ -417,20 +460,90 @@ def calculate_data_size(messages: List[dict]) -> dict:
         "size_str": size_str
     }
 
+MODEL_PRICING_PER_MILLION = {
+    "gemini-2.5-flash-lite": {
+        "standard": {"input": 0.10, "output": 0.40},
+        "batch": {"input": 0.05, "output": 0.20}
+    },
+    "gemini-2.5-pro": {
+        "standard": {"input": 1.25, "output": 10.00},
+        "batch": {"input": 0.625, "output": 5.00}
+    },
+    "gemini-2.0-flash": {
+        "standard": {"input": 0.015, "output": 0.060},
+        "batch": {"input": 0.0075, "output": 0.030}
+    },
+    "gemini-3-pro-preview": {
+        "standard": {"input": 2.00, "output": 12.00},
+        "batch": {"input": 1.00, "output": 6.00}
+    },
+    "gemini-3-flash-preview": {
+        "standard": {"input": 0.50, "output": 3.00},
+        "batch": {"input": 0.25, "output": 1.50}
+    }
+}
 
-def estimate_simple_cost(message_count: int, avg_chars_per_msg: int = 11) -> dict:
+
+def get_pricing_per_1k(model: str, use_batch_pricing: bool) -> dict:
+    """モデル別の1Kトークンあたり料金を取得（未定義はフォールバック）"""
+    normalized_model = model.removeprefix("models/")
+    tier = "batch" if use_batch_pricing else "standard"
+    pricing = MODEL_PRICING_PER_MILLION.get(normalized_model)
+    pricing_note = None
+
+    if pricing and tier in pricing:
+        input_per_million = pricing[tier]["input"]
+        output_per_million = pricing[tier]["output"]
+        pricing_model = normalized_model
+    elif pricing and "standard" in pricing:
+        input_per_million = pricing["standard"]["input"]
+        output_per_million = pricing["standard"]["output"]
+        pricing_model = normalized_model
+        if use_batch_pricing:
+            input_per_million *= 0.5
+            output_per_million *= 0.5
+            pricing_note = "バッチ料金が未定義のため標準料金の50%で推定"
+    else:
+        fallback = MODEL_PRICING_PER_MILLION["gemini-2.0-flash"]["standard"]
+        input_per_million = fallback["input"]
+        output_per_million = fallback["output"]
+        pricing_model = "gemini-2.0-flash"
+        if use_batch_pricing:
+            input_per_million *= 0.5
+            output_per_million *= 0.5
+            pricing_note = f"モデル料金が未定義のため{pricing_model}の50%で推定"
+        else:
+            pricing_note = f"モデル料金が未定義のため{pricing_model}で推定"
+
+    return {
+        "input_cost_per_1k": input_per_million / 1000,
+        "output_cost_per_1k": output_per_million / 1000,
+        "pricing_model": pricing_model,
+        "pricing_tier": tier,
+        "pricing_note": pricing_note
+    }
+
+
+def estimate_simple_cost(
+    message_count: int,
+    avg_chars_per_msg: int = 11,
+    model: str = "gemini-2.0-flash",
+    use_batch_pricing: bool = False
+) -> dict:
     """簡易翻訳のコストを推定
 
     Args:
         message_count: メッセージ数
         avg_chars_per_msg: 1メッセージあたりの平均文字数
+        model: 使用モデル
+        use_batch_pricing: バッチ料金を使用するか
 
     Returns:
         コスト推定情報の辞書
     """
-    # Gemini 2.0 Flash pricing (2025年1月時点)
-    input_cost_per_1k = 0.000015   # $0.000015/1K tokens
-    output_cost_per_1k = 0.00006   # $0.00006/1K tokens
+    pricing = get_pricing_per_1k(model, use_batch_pricing)
+    input_cost_per_1k = pricing["input_cost_per_1k"]
+    output_cost_per_1k = pricing["output_cost_per_1k"]
 
     # 推定トークン数（簡易翻訳）
     input_tokens_per_msg = 50 + (avg_chars_per_msg * 1.5)  # 簡易プロンプト + テキスト
@@ -448,23 +561,33 @@ def estimate_simple_cost(message_count: int, avg_chars_per_msg: int = 11) -> dic
         "estimated_input_tokens": int(total_input_tokens),
         "estimated_output_tokens": int(total_output_tokens),
         "estimated_cost_usd": round(total_cost, 4),
-        "estimated_cost_jpy": int(total_cost * 160)  # 1ドル=160円換算
+        "estimated_cost_jpy": int(total_cost * 160),  # 1ドル=160円換算
+        "pricing_model": pricing["pricing_model"],
+        "pricing_tier": pricing["pricing_tier"],
+        "pricing_note": pricing["pricing_note"]
     }
 
 
-def estimate_detailed_cost(message_count: int, avg_chars_per_msg: int = 20) -> dict:
+def estimate_detailed_cost(
+    message_count: int,
+    avg_chars_per_msg: int = 20,
+    model: str = "gemini-2.0-flash",
+    use_batch_pricing: bool = False
+) -> dict:
     """詳細翻訳のコストを推定
 
     Args:
         message_count: メッセージ数
         avg_chars_per_msg: 1メッセージあたりの平均文字数
+        model: 使用モデル
+        use_batch_pricing: バッチ料金を使用するか
 
     Returns:
         コスト推定情報の辞書
     """
-    # Gemini 2.0 Flash pricing (2025年1月時点)
-    input_cost_per_1k = 0.000015   # $0.000015/1K tokens
-    output_cost_per_1k = 0.00006   # $0.00006/1K tokens
+    pricing = get_pricing_per_1k(model, use_batch_pricing)
+    input_cost_per_1k = pricing["input_cost_per_1k"]
+    output_cost_per_1k = pricing["output_cost_per_1k"]
 
     # 推定トークン数
     input_tokens_per_msg = 800 + (avg_chars_per_msg * 1.5)  # プロンプト + テキスト
@@ -482,7 +605,10 @@ def estimate_detailed_cost(message_count: int, avg_chars_per_msg: int = 20) -> d
         "estimated_input_tokens": int(total_input_tokens),
         "estimated_output_tokens": int(total_output_tokens),
         "estimated_cost_usd": round(total_cost, 4),
-        "estimated_cost_jpy": int(total_cost * 160)  # 1ドル=160円換算
+        "estimated_cost_jpy": int(total_cost * 160),  # 1ドル=160円換算
+        "pricing_model": pricing["pricing_model"],
+        "pricing_tier": pricing["pricing_tier"],
+        "pricing_note": pricing["pricing_note"]
     }
 
 
@@ -499,7 +625,7 @@ def translate_with_gemini_detailed(
         model: 使用するGeminiモデル
 
     Returns:
-        Markdown形式の詳細解説、失敗時はNone
+        JSON形式の詳細解説（文字列）、失敗時はNone
     """
     # テキストのサニタイズ
     text = sanitize_text_for_prompt(text)
@@ -531,6 +657,11 @@ def translate_with_gemini_detailed(
             try:
                 # レスポンス構造: candidates[0].content.parts[0].text
                 detailed_translation = result_json["candidates"][0]["content"]["parts"][0]["text"].strip()
+                
+                # JSONを抽出（Markdownコードブロックで囲まれている場合にも対応）
+                json_str = extract_json_from_response(detailed_translation)
+                if json_str:
+                    detailed_translation = json_str
 
                 # バリデーション
                 if validate_detailed_response(detailed_translation):
@@ -560,7 +691,9 @@ def translate_with_gemini_batch(
     batch_size: int = 100,
     poll_interval: int = 30,
     max_wait_time: int = 86400,
-    max_count: int = None
+    max_count: int = None,
+    detailed: bool = False,
+    max_retries: int = 1
 ) -> Dict[str, str]:
     """
     Gemini Batch APIで一括翻訳（50%割引）
@@ -573,6 +706,7 @@ def translate_with_gemini_batch(
         poll_interval: ステータス確認間隔（秒）
         max_wait_time: 最大待機時間（秒）
         max_count: 処理する最大件数（Noneの場合は全件処理）
+        max_retries: 失敗したリクエストを再試行する回数
 
     Returns:
         {message_id: translation} の辞書
@@ -605,42 +739,54 @@ def translate_with_gemini_batch(
     print("バッチAPIは通常料金の50%割引です")
 
     # 確認プロンプト
-    if not confirm_translation(zh_messages, detailed=False, model=model):
+    if not confirm_translation(zh_messages, detailed=detailed, model=model, use_batch_pricing=True):
         print("処理を中止しました。")
         return translations
 
     # バッチに分割して処理
     total_batches = (len(zh_messages) + batch_size - 1) // batch_size
 
-    for batch_idx in range(total_batches):
-        start_idx = batch_idx * batch_size
-        end_idx = min(start_idx + batch_size, len(zh_messages))
-        batch_messages = zh_messages[start_idx:end_idx]
-
-        print(f"\nバッチ {batch_idx + 1}/{total_batches} を処理中... ({len(batch_messages)}件)")
-
-        # ファイル入力方式でバッチリクエストを作成
+    def run_batch_job(
+        batch_messages: List[dict],
+        batch_label: str,
+        display_name: str
+    ) -> Tuple[Dict[str, str], List[str], str]:
         requests_data = []
         for m in batch_messages:
             text = sanitize_text_for_prompt(m["text"])
-            prompt = f"Translate the following Chinese text into natural Japanese. Only output the translated text.\n\nText: {text}"
+
+            if detailed:
+                prompt = DETAILED_TRANSLATION_PROMPT.format(text=text)
+                temp = 0.3
+            else:
+                prompt = (
+                    "Translate the following Chinese text into natural Japanese. "
+                    "Only output the translated text.\n\nText: "
+                    f"{text}"
+                )
+                temp = 0.1
 
             requests_data.append({
                 "key": m["id"],
                 "request": {
                     "contents": [{"parts": [{"text": prompt}]}],
-                    "generationConfig": {"temperature": 0.1}
+                    "generationConfig": {"temperature": temp}
                 }
             })
 
-        # 一時ファイルにJSONL形式で書き込み
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.jsonl', delete=False, encoding='utf-8') as f:
-            for req in requests_data:
-                f.write(json.dumps(req, ensure_ascii=False) + '\n')
-            temp_file_path = f.name
+        temp_file_path = None
+        uploaded_file = None
+        batch = None
+        batch_translations: Dict[str, str] = {}
+        failed_ids: List[str] = []
+        state_name = "JOB_STATE_UNKNOWN"
 
         try:
-            # ファイルをアップロード
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.jsonl', delete=False, encoding='utf-8') as f:
+                for req in requests_data:
+                    f.write(json.dumps(req, ensure_ascii=False) + '\n')
+                temp_file_path = f.name
+
             print("リクエストファイルをアップロード中...")
             uploaded_file = client.files.upload(
                 file=temp_file_path,
@@ -648,18 +794,15 @@ def translate_with_gemini_batch(
             )
             print(f"アップロード完了: {uploaded_file.name}")
 
-            # バッチジョブを作成
             print("バッチジョブを作成中...")
-            # モデル名の正規化（"models/" プレフィックスの重複を防ぐ）
             normalized_model = model.removeprefix("models/")
             batch_job = client.batches.create(
                 model=f"models/{normalized_model}",
                 src=uploaded_file.name,
-                config={"display_name": f"translate-batch-{batch_idx + 1}"}
+                config={"display_name": f"translate-batch-{display_name}"}
             )
             print(f"バッチジョブ作成完了: {batch_job.name}")
 
-            # ジョブ完了を待機
             completed_states = {'JOB_STATE_SUCCEEDED', 'JOB_STATE_FAILED',
                                'JOB_STATE_CANCELLED', 'JOB_STATE_EXPIRED'}
 
@@ -681,11 +824,9 @@ def translate_with_gemini_batch(
                     time.sleep(poll_interval)
                     pbar.update(poll_interval)
 
-            # 結果を取得
             if state_name == 'JOB_STATE_SUCCEEDED':
                 print("結果を取得中...")
 
-                # バッチ統計を表示
                 if hasattr(batch, 'stats'):
                     stats = batch.stats
                     total = stats.total_request_count if hasattr(stats, 'total_request_count') else 0
@@ -695,11 +836,8 @@ def translate_with_gemini_batch(
                     if failed > 0:
                         print(f"  ⚠️  警告: {failed}/{total} 件失敗", file=sys.stderr)
 
-                # ファイル出力の場合
                 if hasattr(batch, 'dest') and hasattr(batch.dest, 'file_name') and batch.dest.file_name:
                     result_content = client.files.download(file=batch.dest.file_name)
-
-                    # バイト列の場合はデコード
                     if isinstance(result_content, bytes):
                         result_content = result_content.decode('utf-8')
 
@@ -708,50 +846,101 @@ def translate_with_gemini_batch(
                             continue
                         try:
                             result = json.loads(line)
-
-                            # キー（メッセージID）を取得
                             msg_key = result.get("key", "")
-
-                            # レスポンスから翻訳テキストを抽出
                             if "response" in result:
                                 resp = result["response"]
                                 if "candidates" in resp and resp["candidates"]:
                                     text_result = resp["candidates"][0]["content"]["parts"][0]["text"].strip()
-                                    translations[msg_key] = text_result
+                                    batch_translations[msg_key] = text_result
                             elif "error" in result:
+                                failed_ids.append(msg_key)
                                 print(f"  エラー (ID: {msg_key}): {result['error']}", file=sys.stderr)
 
                         except (json.JSONDecodeError, KeyError, IndexError) as e:
                             print(f"  結果解析エラー: {e}", file=sys.stderr)
 
-                # インラインレスポンスの場合
                 elif hasattr(batch, 'dest') and hasattr(batch.dest, 'inlined_responses'):
                     for i, resp in enumerate(batch.dest.inlined_responses):
                         if i < len(batch_messages):
                             msg_id = batch_messages[i]["id"]
                             if hasattr(resp, 'response') and resp.response:
-                                translations[msg_id] = resp.response.text.strip()
+                                batch_translations[msg_id] = resp.response.text.strip()
+                            else:
+                                failed_ids.append(msg_id)
 
-                print(f"バッチ {batch_idx + 1} 完了: {len([k for k in translations if k in [m['id'] for m in batch_messages]])}件翻訳成功")
-
+                pending_ids = [m["id"] for m in batch_messages]
+                missing_ids = [msg_id for msg_id in pending_ids if msg_id not in batch_translations]
+                for msg_id in missing_ids:
+                    if msg_id not in failed_ids:
+                        failed_ids.append(msg_id)
             else:
-                print(f"バッチ {batch_idx + 1} 失敗: {state_name}", file=sys.stderr)
-                if hasattr(batch, 'error') and batch.error:
+                print(f"バッチ {batch_label} 失敗: {state_name}", file=sys.stderr)
+                if batch and hasattr(batch, 'error') and batch.error:
                     print(f"  エラー詳細: {batch.error}", file=sys.stderr)
+                failed_ids = [m["id"] for m in batch_messages]
+
+        except Exception as e:
+            print(f"バッチ {batch_label} エラー: {e}", file=sys.stderr)
+            failed_ids = [m["id"] for m in batch_messages]
 
         finally:
-            # Google にアップロードしたリモートファイルを削除
-            try:
-                client.files.delete(name=uploaded_file.name)
-                print(f"リモートファイル削除: {uploaded_file.name}")
-            except Exception as e:
-                print(f"リモートファイル削除エラー: {e}", file=sys.stderr)
+            if uploaded_file is not None:
+                try:
+                    client.files.delete(name=uploaded_file.name)
+                    print(f"リモートファイル削除: {uploaded_file.name}")
+                except Exception as e:
+                    print(f"リモートファイル削除エラー: {e}", file=sys.stderr)
 
-            # ローカルの一時ファイルを削除
-            try:
-                os.unlink(temp_file_path)
-            except OSError:
-                pass
+            if temp_file_path:
+                try:
+                    os.unlink(temp_file_path)
+                except OSError:
+                    pass
+
+        if failed_ids:
+            failed_ids = sorted(set(failed_ids))
+
+        return batch_translations, failed_ids, state_name
+
+    for batch_idx in range(total_batches):
+        start_idx = batch_idx * batch_size
+        end_idx = min(start_idx + batch_size, len(zh_messages))
+        batch_messages = zh_messages[start_idx:end_idx]
+        batch_label = f"{batch_idx + 1}/{total_batches}"
+
+        pending_messages = batch_messages
+        attempt = 0
+        while pending_messages:
+            attempt += 1
+            if attempt == 1:
+                print(f"\nバッチ {batch_label} を処理中... ({len(pending_messages)}件)")
+            else:
+                print(f"\nバッチ {batch_label} 再試行 {attempt - 1}/{max_retries}... ({len(pending_messages)}件)")
+
+            display_name = f"{batch_idx + 1}-try-{attempt}"
+            batch_translations, failed_ids, state_name = run_batch_job(
+                pending_messages,
+                batch_label,
+                display_name
+            )
+            translations.update(batch_translations)
+
+            if not failed_ids:
+                break
+
+            if attempt > max_retries:
+                print(f"  ⚠️  再試行上限に到達: 未翻訳 {len(failed_ids)}件", file=sys.stderr)
+                break
+
+            failed_set = set(failed_ids)
+            pending_messages = [m for m in pending_messages if m["id"] in failed_set]
+
+        batch_ids = {m["id"] for m in batch_messages}
+        success_count = len([msg_id for msg_id in translations if msg_id in batch_ids])
+        missing_count = len([msg_id for msg_id in batch_ids if msg_id not in translations])
+        print(f"バッチ {batch_idx + 1} 完了: {success_count}件翻訳成功")
+        if missing_count > 0:
+            print(f"  ⚠️  未翻訳: {missing_count}件", file=sys.stderr)
 
     print(f"\n全バッチ処理完了: {len(translations)}/{len(zh_messages)}件翻訳成功")
     return translations
@@ -822,6 +1011,7 @@ def process_single_file(
     timeout: int,
     batch_size: int,
     poll_interval: int,
+    max_retries: int,
     count: Optional[int] = None
 ) -> Tuple[int, int]:
     """
@@ -930,13 +1120,28 @@ def process_single_file(
             model=model,
             batch_size=batch_size,
             poll_interval=poll_interval,
-            max_count=count
+            max_count=count,
+            detailed=detailed,
+            max_retries=max_retries
         )
         
         # 翻訳結果をマージ
         for m in messages:
             if m["id"] in translations:
-                m["text_ja"] = translations[m["id"]]
+                result = translations[m["id"]]
+                if detailed:
+                    # JSONから自然な翻訳を抽出してtext_jaに入れる
+                    m["text_ja_detailed"] = result
+                    json_str = extract_json_from_response(result)
+                    if json_str:
+                        try:
+                            data = json.loads(json_str)
+                            if "natural_translation" in data:
+                                m["text_ja"] = data["natural_translation"]
+                        except json.JSONDecodeError:
+                            pass
+                else:
+                    m["text_ja"] = result
         
         translated_count = len(translations)
     
@@ -1018,6 +1223,7 @@ def process_directory(args):
                 timeout=args.timeout,
                 batch_size=args.batch_size,
                 poll_interval=args.poll_interval,
+                max_retries=args.max_retries,
                 count=None  # ディレクトリ処理時は各ファイルの全メッセージを処理
             )
             
@@ -1065,6 +1271,7 @@ def main():
     parser.add_argument('--model', '-m', default='qwen2.5:7b', help='モデル名 (Ollama: qwen2.5:7b, Gemini: gemini-2.0-flash 等)')
     parser.add_argument('--batch-size', type=int, default=100, help='バッチAPIの1バッチあたりのリクエスト数 (デフォルト: 100)')
     parser.add_argument('--poll-interval', type=int, default=30, help='バッチAPIのステータス確認間隔秒数 (デフォルト: 30)')
+    parser.add_argument('--max-retries', type=int, default=1, help='バッチAPIで失敗したリクエストを再試行する回数 (デフォルト: 1)')
     parser.add_argument('--api-key', help='Google API Key (Gemini用)。環境変数 GOOGLE_API_KEY も使用可能')
     parser.add_argument('--timeout', type=int, default=180, help='Ollamaリクエストのタイムアウト秒数 (デフォルト: 180)')
     parser.add_argument('--list-models', action='store_true', help='利用可能なモデル一覧を表示')
@@ -1120,6 +1327,7 @@ def main():
         timeout=args.timeout,
         batch_size=args.batch_size,
         poll_interval=args.poll_interval,
+        max_retries=args.max_retries,
         count=args.count
     )
     

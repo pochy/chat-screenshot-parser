@@ -1,516 +1,682 @@
 <!DOCTYPE html>
 <html lang="ja">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>WeChat 翻訳ビューワー</title>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
 
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            background: #f5f5f5;
-            color: #333;
-        }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+        background: #f5f5f5;
+        color: #333;
+      }
 
-        .header {
-            background: #2c3e50;
-            color: white;
-            padding: 1rem 2rem;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
+      .header {
+        background: #2c3e50;
+        color: white;
+        padding: 1rem 2rem;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      }
 
-        .header h1 {
-            font-size: 1.5rem;
-            margin-bottom: 0.5rem;
-        }
+      .header h1 {
+        font-size: 1.5rem;
+        margin-bottom: 0.5rem;
+      }
 
-        .file-input-container {
-            display: flex;
-            gap: 1rem;
-            align-items: center;
-            margin-top: 0.5rem;
-        }
+      .file-input-container {
+        display: flex;
+        gap: 1rem;
+        align-items: center;
+        margin-top: 0.5rem;
+      }
 
-        .file-input-container input[type="file"] {
-            flex: 1;
-            padding: 0.5rem;
-            background: white;
-            border-radius: 4px;
-            border: none;
-        }
+      .file-input-container input[type="file"] {
+        flex: 1;
+        padding: 0.5rem;
+        background: white;
+        border-radius: 4px;
+        border: none;
+      }
 
-        .quick-load {
-            display: flex;
-            gap: 0.5rem;
-            flex-wrap: wrap;
-        }
+      .quick-load {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+      }
 
-        .quick-load-btn {
-            padding: 0.5rem 1rem;
-            background: #3498db;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 0.9rem;
-        }
+      .quick-load-btn {
+        padding: 0.5rem 1rem;
+        background: #3498db;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 0.9rem;
+      }
 
-        .quick-load-btn:hover {
-            background: #2980b9;
-        }
+      .quick-load-btn:hover {
+        background: #2980b9;
+      }
 
+      .container {
+        display: flex;
+        height: calc(100vh - 120px);
+      }
+
+      .sidebar {
+        width: 350px;
+        background: white;
+        border-right: 1px solid #ddd;
+        overflow-y: auto;
+        padding: 1rem;
+      }
+
+      .filter-section {
+        margin-bottom: 1rem;
+        padding-bottom: 1rem;
+        border-bottom: 1px solid #eee;
+      }
+
+      .filter-section label {
+        display: block;
+        margin-bottom: 0.5rem;
+        font-weight: 600;
+        font-size: 0.9rem;
+      }
+
+      .filter-section input,
+      .filter-section select {
+        width: 100%;
+        padding: 0.5rem;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 0.9rem;
+      }
+
+      .stats {
+        background: #ecf0f1;
+        padding: 0.75rem;
+        border-radius: 4px;
+        margin-bottom: 1rem;
+        font-size: 0.85rem;
+      }
+
+      .stats div {
+        margin-bottom: 0.25rem;
+      }
+
+      .message-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+
+      .message-item {
+        padding: 0.75rem;
+        background: #f8f9fa;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: all 0.2s;
+        border-left: 3px solid transparent;
+      }
+
+      .message-item:hover {
+        background: #e9ecef;
+      }
+
+      .message-item.active {
+        background: #d4edff;
+        border-left-color: #3498db;
+      }
+
+      .message-item.has-detailed {
+        background: #e8f5e9;
+      }
+
+      .message-item.has-detailed.active {
+        background: #c8e6c9;
+        border-left-color: #4caf50;
+      }
+
+      .message-item-header {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 0.25rem;
+        font-size: 0.85rem;
+      }
+
+      .message-id {
+        font-weight: 600;
+        color: #555;
+      }
+
+      .message-lang {
+        padding: 0.1rem 0.4rem;
+        background: #3498db;
+        color: white;
+        border-radius: 3px;
+        font-size: 0.75rem;
+      }
+
+      .message-lang.zh {
+        background: #e74c3c;
+      }
+
+      .message-preview {
+        font-size: 0.9rem;
+        color: #666;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .content {
+        flex: 1;
+        padding: 2rem;
+        overflow-y: auto;
+        background: white;
+      }
+
+      .content.empty {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #999;
+        font-size: 1.2rem;
+      }
+
+      .message-detail {
+        max-width: 900px;
+        margin: 0 auto;
+      }
+
+      .detail-header {
+        background: #ecf0f1;
+        padding: 1rem;
+        border-radius: 4px;
+        margin-bottom: 2rem;
+      }
+
+      .detail-header h2 {
+        font-size: 1.3rem;
+        margin-bottom: 0.5rem;
+        color: #2c3e50;
+      }
+
+      .detail-meta {
+        display: flex;
+        gap: 1rem;
+        font-size: 0.9rem;
+        color: #666;
+      }
+
+      .section {
+        margin-bottom: 2rem;
+      }
+
+      .section-title {
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: #2c3e50;
+        margin-bottom: 0.75rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 2px solid #3498db;
+      }
+
+      .simple-translation {
+        background: #e3f2fd;
+        padding: 1rem;
+        border-radius: 4px;
+        font-size: 1rem;
+        line-height: 1.6;
+      }
+
+      .detailed-translation {
+        background: #ffffff;
+        padding: 1.5rem;
+        border-radius: 8px;
+        border: 1px solid #e0e6ed;
+        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.05);
+      }
+
+      .detailed-translation h3 {
+        color: #2c3e50;
+        font-size: 1.1rem;
+        margin-top: 1.5rem;
+        margin-bottom: 0.75rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 2px solid #3498db;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+
+      .detailed-translation h3:first-child {
+        margin-top: 0;
+      }
+
+      .correction-box {
+        background: #fff8e1;
+        border-left: 4px solid #ffc107;
+        padding: 1rem;
+        margin-bottom: 1.5rem;
+        border-radius: 4px;
+      }
+
+      .correction-label {
+        font-weight: bold;
+        color: #856404;
+        display: block;
+        margin-bottom: 0.25rem;
+        font-size: 0.8rem;
+        text-transform: uppercase;
+      }
+
+      .word-card-container {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+      }
+
+      .word-card {
+        background: #f8f9fa;
+        border-radius: 6px;
+        padding: 1rem;
+        border: 1px solid #dee2e6;
+        transition: transform 0.2s;
+      }
+
+      .word-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+      }
+
+      .word-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 0.5rem;
+      }
+
+      .word-main {
+        font-size: 1.2rem;
+        font-weight: bold;
+        color: #e74c3c;
+      }
+
+      .hsk-badge {
+        font-size: 0.7rem;
+        background: #34495e;
+        color: white;
+        padding: 0.1rem 0.4rem;
+        border-radius: 12px;
+      }
+
+      .pinyin {
+        color: #3498db;
+        font-family: serif;
+        font-size: 0.95rem;
+        margin-bottom: 0.25rem;
+      }
+
+      .pos {
+        font-size: 0.8rem;
+        color: #6c757d;
+        font-style: italic;
+      }
+
+      .meaning {
+        font-weight: 500;
+        margin-bottom: 0.5rem;
+      }
+
+      .explanation {
+        font-size: 0.85rem;
+        color: #495057;
+        line-height: 1.4;
+      }
+
+      .nuance-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+        margin-bottom: 1rem;
+      }
+
+      .nuance-item {
+        background: #f1f8ff;
+        padding: 0.75rem;
+        border-radius: 4px;
+      }
+
+      .nuance-label {
+        display: block;
+        font-size: 0.75rem;
+        color: #0366d6;
+        font-weight: bold;
+        margin-bottom: 0.25rem;
+      }
+
+      .reply-container {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+      }
+
+      .reply-card {
+        border: 1px solid #e1e4e8;
+        border-radius: 6px;
+        overflow: hidden;
+      }
+
+      .reply-type {
+        background: #6f42c1;
+        color: white;
+        padding: 0.4rem 1rem;
+        font-size: 0.85rem;
+        font-weight: 600;
+      }
+
+      .reply-content {
+        padding: 1rem;
+        background: white;
+      }
+
+      .reply-text {
+        font-size: 1.05rem;
+        font-weight: 500;
+        color: #24292e;
+        margin-bottom: 0.5rem;
+        padding: 0.5rem;
+        background: #f6f8fa;
+        border-radius: 4px;
+      }
+
+      .reply-reason {
+        font-size: 0.85rem;
+        color: #586069;
+      }
+
+      .copy-btn {
+        background: none;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        color: #666;
+        cursor: pointer;
+        font-size: 0.75rem;
+        padding: 0.2rem 0.5rem;
+        margin-left: 0.5rem;
+      }
+
+      .copy-btn:hover {
+        background: #eee;
+        color: #333;
+      }
+
+      @media (max-width: 768px) {
         .container {
-            display: flex;
-            height: calc(100vh - 120px);
+          flex-direction: column;
         }
 
         .sidebar {
-            width: 350px;
-            background: white;
-            border-right: 1px solid #ddd;
-            overflow-y: auto;
-            padding: 1rem;
-        }
-
-        .filter-section {
-            margin-bottom: 1rem;
-            padding-bottom: 1rem;
-            border-bottom: 1px solid #eee;
-        }
-
-        .filter-section label {
-            display: block;
-            margin-bottom: 0.5rem;
-            font-weight: 600;
-            font-size: 0.9rem;
-        }
-
-        .filter-section input,
-        .filter-section select {
-            width: 100%;
-            padding: 0.5rem;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 0.9rem;
-        }
-
-        .stats {
-            background: #ecf0f1;
-            padding: 0.75rem;
-            border-radius: 4px;
-            margin-bottom: 1rem;
-            font-size: 0.85rem;
-        }
-
-        .stats div {
-            margin-bottom: 0.25rem;
-        }
-
-        .message-list {
-            display: flex;
-            flex-direction: column;
-            gap: 0.5rem;
-        }
-
-        .message-item {
-            padding: 0.75rem;
-            background: #f8f9fa;
-            border-radius: 4px;
-            cursor: pointer;
-            transition: all 0.2s;
-            border-left: 3px solid transparent;
-        }
-
-        .message-item:hover {
-            background: #e9ecef;
-        }
-
-        .message-item.active {
-            background: #d4edff;
-            border-left-color: #3498db;
-        }
-
-        .message-item.has-detailed {
-            background: #e8f5e9;
-        }
-
-        .message-item.has-detailed.active {
-            background: #c8e6c9;
-            border-left-color: #4caf50;
-        }
-
-        .message-item-header {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 0.25rem;
-            font-size: 0.85rem;
-        }
-
-        .message-id {
-            font-weight: 600;
-            color: #555;
-        }
-
-        .message-lang {
-            padding: 0.1rem 0.4rem;
-            background: #3498db;
-            color: white;
-            border-radius: 3px;
-            font-size: 0.75rem;
-        }
-
-        .message-lang.zh {
-            background: #e74c3c;
-        }
-
-        .message-preview {
-            font-size: 0.9rem;
-            color: #666;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
+          width: 100%;
+          height: 300px;
         }
 
         .content {
-            flex: 1;
-            padding: 2rem;
-            overflow-y: auto;
-            background: white;
+          height: calc(100vh - 420px);
         }
+      }
 
-        .content.empty {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: #999;
-            font-size: 1.2rem;
-        }
+      .loading {
+        text-align: center;
+        padding: 2rem;
+        color: #999;
+      }
 
-        .message-detail {
-            max-width: 900px;
-            margin: 0 auto;
-        }
-
-        .detail-header {
-            background: #ecf0f1;
-            padding: 1rem;
-            border-radius: 4px;
-            margin-bottom: 2rem;
-        }
-
-        .detail-header h2 {
-            font-size: 1.3rem;
-            margin-bottom: 0.5rem;
-            color: #2c3e50;
-        }
-
-        .detail-meta {
-            display: flex;
-            gap: 1rem;
-            font-size: 0.9rem;
-            color: #666;
-        }
-
-        .section {
-            margin-bottom: 2rem;
-        }
-
-        .section-title {
-            font-size: 1.1rem;
-            font-weight: 600;
-            color: #2c3e50;
-            margin-bottom: 0.75rem;
-            padding-bottom: 0.5rem;
-            border-bottom: 2px solid #3498db;
-        }
-
-        .simple-translation {
-            background: #e3f2fd;
-            padding: 1rem;
-            border-radius: 4px;
-            font-size: 1rem;
-            line-height: 1.6;
-        }
-
-        .detailed-translation {
-            background: #f9f9f9;
-            padding: 1.5rem;
-            border-radius: 4px;
-            border: 1px solid #ddd;
-        }
-
-        .detailed-translation h2 {
-            color: #2c3e50;
-            font-size: 1.3rem;
-            margin-top: 2rem;
-            margin-bottom: 1rem;
-            padding-bottom: 0.5rem;
-            border-bottom: 2px solid #e74c3c;
-        }
-
-        .detailed-translation h2:first-child {
-            margin-top: 0;
-        }
-
-        .detailed-translation table {
-            width: 100%;
-            border-collapse: collapse;
-            margin: 1rem 0;
-            font-size: 0.9rem;
-        }
-
-        .detailed-translation th,
-        .detailed-translation td {
-            border: 1px solid #ddd;
-            padding: 0.75rem;
-            text-align: left;
-        }
-
-        .detailed-translation th {
-            background: #34495e;
-            color: white;
-            font-weight: 600;
-        }
-
-        .detailed-translation tr:nth-child(even) {
-            background: #f5f5f5;
-        }
-
-        .detailed-translation ul,
-        .detailed-translation ol {
-            margin-left: 1.5rem;
-            margin-bottom: 1rem;
-        }
-
-        .detailed-translation li {
-            margin-bottom: 0.5rem;
-            line-height: 1.6;
-        }
-
-        .detailed-translation p {
-            margin-bottom: 1rem;
-            line-height: 1.6;
-        }
-
-        .detailed-translation strong {
-            color: #e74c3c;
-        }
-
-        .detailed-translation hr {
-            border: none;
-            border-top: 1px solid #ddd;
-            margin: 1.5rem 0;
-        }
-
-        .no-detailed {
-            color: #999;
-            font-style: italic;
-            padding: 1rem;
-            background: #f5f5f5;
-            border-radius: 4px;
-        }
-
-        @media (max-width: 768px) {
-            .container {
-                flex-direction: column;
-            }
-
-            .sidebar {
-                width: 100%;
-                height: 300px;
-            }
-
-            .content {
-                height: calc(100vh - 420px);
-            }
-        }
-
-        .loading {
-            text-align: center;
-            padding: 2rem;
-            color: #999;
-        }
-
-        .error {
-            background: #ffebee;
-            color: #c62828;
-            padding: 1rem;
-            border-radius: 4px;
-            margin: 1rem 0;
-        }
+      .error {
+        background: #ffebee;
+        color: #c62828;
+        padding: 1rem;
+        border-radius: 4px;
+        margin: 1rem 0;
+      }
     </style>
-</head>
-<body>
+  </head>
+  <body>
     <div class="header">
-        <h1>📝 WeChat 翻訳ビューワー</h1>
-        <div class="file-input-container">
-            <input type="file" id="fileInput" accept=".jsonl" />
-            <div class="quick-load">
-                <button class="quick-load-btn" onclick="loadFile('output/test_detailed.jsonl')">test_detailed.jsonl</button>
-                <button class="quick-load-btn" onclick="loadFile('output/detailed.jsonl')">detailed.jsonl</button>
-                <button class="quick-load-btn" onclick="loadFile('output/translated.jsonl')">translated.jsonl</button>
-            </div>
+      <h1>📝 WeChat 翻訳ビューワー</h1>
+      <div class="file-input-container">
+        <input type="file" id="fileInput" accept=".jsonl" />
+        <div class="quick-load">
+          <button
+            class="quick-load-btn"
+            onclick="loadFile('output/test_detailed.jsonl')"
+          >
+            test_detailed.jsonl
+          </button>
+          <button
+            class="quick-load-btn"
+            onclick="loadFile('output/detailed.jsonl')"
+          >
+            detailed.jsonl
+          </button>
+          <button
+            class="quick-load-btn"
+            onclick="loadFile('output/translated.jsonl')"
+          >
+            translated.jsonl
+          </button>
         </div>
+      </div>
     </div>
 
     <div class="container">
-        <div class="sidebar">
-            <div class="filter-section">
-                <label for="searchInput">検索</label>
-                <input type="text" id="searchInput" placeholder="メッセージを検索..." />
-            </div>
-            <div class="filter-section">
-                <label for="langFilter">言語フィルタ</label>
-                <select id="langFilter">
-                    <option value="all">すべて</option>
-                    <option value="zh">中国語のみ</option>
-                    <option value="ja">日本語のみ</option>
-                </select>
-            </div>
-            <div class="filter-section">
-                <label for="detailedFilter">詳細翻訳フィルタ</label>
-                <select id="detailedFilter">
-                    <option value="all">すべて</option>
-                    <option value="detailed">詳細翻訳あり</option>
-                    <option value="simple">簡易翻訳のみ</option>
-                </select>
-            </div>
-            <div class="stats" id="stats"></div>
-            <div class="message-list" id="messageList"></div>
+      <div class="sidebar">
+        <div class="filter-section">
+          <label for="searchInput">検索</label>
+          <input
+            type="text"
+            id="searchInput"
+            placeholder="メッセージを検索..."
+          />
         </div>
-        <div class="content empty" id="content">
-            <div>ファイルを選択してください</div>
+        <div class="filter-section">
+          <label for="langFilter">言語フィルタ</label>
+          <select id="langFilter">
+            <option value="all">すべて</option>
+            <option value="zh">中国語のみ</option>
+            <option value="ja">日本語のみ</option>
+          </select>
         </div>
+        <div class="filter-section">
+          <label for="detailedFilter">詳細翻訳フィルタ</label>
+          <select id="detailedFilter">
+            <option value="all">すべて</option>
+            <option value="detailed">詳細翻訳あり</option>
+            <option value="simple">簡易翻訳のみ</option>
+          </select>
+        </div>
+        <div class="stats" id="stats"></div>
+        <div class="message-list" id="messageList"></div>
+      </div>
+      <div class="content empty" id="content">
+        <div>ファイルを選択してください</div>
+      </div>
     </div>
 
     <script>
-        let messages = [];
-        let filteredMessages = [];
-        let currentMessageId = null;
+      let messages = [];
+      let filteredMessages = [];
+      let currentMessageId = null;
 
-        // ファイル入力の変更イベント
-        document.getElementById('fileInput').addEventListener('change', function(e) {
-            const file = e.target.files[0];
-            if (file) {
-                readFile(file);
-            }
+      // ファイル入力の変更イベント
+      document
+        .getElementById("fileInput")
+        .addEventListener("change", function (e) {
+          const file = e.target.files[0];
+          if (file) {
+            readFile(file);
+          }
         });
 
-        // 検索・フィルタのイベント
-        document.getElementById('searchInput').addEventListener('input', filterMessages);
-        document.getElementById('langFilter').addEventListener('change', filterMessages);
-        document.getElementById('detailedFilter').addEventListener('change', filterMessages);
+      // 検索・フィルタのイベント
+      document
+        .getElementById("searchInput")
+        .addEventListener("input", filterMessages);
+      document
+        .getElementById("langFilter")
+        .addEventListener("change", filterMessages);
+      document
+        .getElementById("detailedFilter")
+        .addEventListener("change", filterMessages);
 
-        // ファイル読み込み（ファイルアップロード）
-        function readFile(file) {
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                const content = e.target.result;
-                parseJSONL(content);
-            };
-            reader.readAsText(file);
+      // ファイル読み込み（ファイルアップロード）
+      function readFile(file) {
+        const reader = new FileReader();
+        reader.onload = function (e) {
+          const content = e.target.result;
+          parseJSONL(content);
+        };
+        reader.readAsText(file);
+      }
+
+      // ファイル読み込み（パス指定）
+      async function loadFile(path) {
+        try {
+          document.getElementById("content").innerHTML =
+            '<div class="loading">読み込み中...</div>';
+          const response = await fetch(path);
+          if (!response.ok) {
+            throw new Error(`ファイルが見つかりません: ${path}`);
+          }
+          const content = await response.text();
+          parseJSONL(content);
+        } catch (error) {
+          document.getElementById(
+            "content"
+          ).innerHTML = `<div class="error">エラー: ${error.message}</div>`;
         }
+      }
 
-        // ファイル読み込み（パス指定）
-        async function loadFile(path) {
-            try {
-                document.getElementById('content').innerHTML = '<div class="loading">読み込み中...</div>';
-                const response = await fetch(path);
-                if (!response.ok) {
-                    throw new Error(`ファイルが見つかりません: ${path}`);
+      // JSONL パース
+      function parseJSONL(content) {
+        try {
+          messages = content
+            .trim()
+            .split("\n")
+            .filter((line) => line.trim())
+            .map((line) => JSON.parse(line));
+
+          filterMessages();
+          updateStats();
+
+          if (messages.length > 0) {
+            showMessage(messages[0].id);
+          }
+        } catch (error) {
+          document.getElementById(
+            "content"
+          ).innerHTML = `<div class="error">JSONLパースエラー: ${error.message}</div>`;
+        }
+      }
+
+      // メッセージフィルタリング
+      function filterMessages() {
+        const searchTerm = document
+          .getElementById("searchInput")
+          .value.toLowerCase();
+        const langFilter = document.getElementById("langFilter").value;
+        const detailedFilter = document.getElementById("detailedFilter").value;
+
+        filteredMessages = messages.filter((msg) => {
+          // 言語フィルタ
+          if (langFilter !== "all" && msg.lang !== langFilter) return false;
+
+          // 詳細翻訳フィルタ
+          if (detailedFilter === "detailed" && !msg.text_ja_detailed)
+            return false;
+          if (detailedFilter === "simple" && msg.text_ja_detailed) return false;
+
+          // 検索フィルタ
+          if (searchTerm) {
+            let detailedText = '';
+            if (msg.text_ja_detailed) {
+                try {
+                    const data = typeof msg.text_ja_detailed === 'object' ? 
+                        msg.text_ja_detailed : JSON.parse(msg.text_ja_detailed);
+                    
+                    detailedText = [
+                        data.natural_translation || '',
+                        data.corrected_text || '',
+                        (data.word_analysis || []).map(w => `${w.word} ${w.pinyin} ${w.meaning}`).join(' '),
+                        (data.nuance_analysis ? Object.values(data.nuance_analysis).join(' ') : ''),
+                        (data.reply_suggestions || []).map(s => s.reply).join(' ')
+                    ].join(' ');
+                } catch (e) {
+                    detailedText = msg.text_ja_detailed;
                 }
-                const content = await response.text();
-                parseJSONL(content);
-            } catch (error) {
-                document.getElementById('content').innerHTML = `<div class="error">エラー: ${error.message}</div>`;
             }
-        }
 
-        // JSONL パース
-        function parseJSONL(content) {
-            try {
-                messages = content.trim().split('\n')
-                    .filter(line => line.trim())
-                    .map(line => JSON.parse(line));
+            const searchableText = [
+                msg.text || '',
+                msg.text_ja || '',
+                msg.id || '',
+                detailedText
+            ].join(' ').toLowerCase();
 
-                filterMessages();
-                updateStats();
+            if (!searchableText.includes(searchTerm)) return false;
+          }
 
-                if (messages.length > 0) {
-                    showMessage(messages[0].id);
-                }
-            } catch (error) {
-                document.getElementById('content').innerHTML = `<div class="error">JSONLパースエラー: ${error.message}</div>`;
-            }
-        }
+          return true;
+        });
 
-        // メッセージフィルタリング
-        function filterMessages() {
-            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
-            const langFilter = document.getElementById('langFilter').value;
-            const detailedFilter = document.getElementById('detailedFilter').value;
+        renderMessageList();
+        updateStats();
+      }
 
-            filteredMessages = messages.filter(msg => {
-                // 言語フィルタ
-                if (langFilter !== 'all' && msg.lang !== langFilter) return false;
+      // 統計情報更新
+      function updateStats() {
+        const zhCount = messages.filter((m) => m.lang === "zh").length;
+        const jaCount = messages.filter((m) => m.lang === "ja").length;
+        const detailedCount = messages.filter((m) => m.text_ja_detailed).length;
 
-                // 詳細翻訳フィルタ
-                if (detailedFilter === 'detailed' && !msg.text_ja_detailed) return false;
-                if (detailedFilter === 'simple' && msg.text_ja_detailed) return false;
-
-                // 検索フィルタ
-                if (searchTerm) {
-                    const searchableText = [
-                        msg.text || '',
-                        msg.text_ja || '',
-                        msg.id || ''
-                    ].join(' ').toLowerCase();
-
-                    if (!searchableText.includes(searchTerm)) return false;
-                }
-
-                return true;
-            });
-
-            renderMessageList();
-            updateStats();
-        }
-
-        // 統計情報更新
-        function updateStats() {
-            const zhCount = messages.filter(m => m.lang === 'zh').length;
-            const jaCount = messages.filter(m => m.lang === 'ja').length;
-            const detailedCount = messages.filter(m => m.text_ja_detailed).length;
-
-            document.getElementById('stats').innerHTML = `
+        document.getElementById("stats").innerHTML = `
                 <div><strong>総メッセージ数:</strong> ${messages.length}件</div>
                 <div><strong>表示中:</strong> ${filteredMessages.length}件</div>
                 <div><strong>中国語:</strong> ${zhCount}件 / <strong>日本語:</strong> ${jaCount}件</div>
                 <div><strong>詳細翻訳:</strong> ${detailedCount}件</div>
             `;
+      }
+
+      // メッセージリスト表示
+      function renderMessageList() {
+        const listEl = document.getElementById("messageList");
+
+        if (filteredMessages.length === 0) {
+          listEl.innerHTML =
+            '<div class="no-detailed">メッセージがありません</div>';
+          return;
         }
 
-        // メッセージリスト表示
-        function renderMessageList() {
-            const listEl = document.getElementById('messageList');
+        listEl.innerHTML = filteredMessages
+          .map((msg) => {
+            const hasDetailed = msg.text_ja_detailed ? "has-detailed" : "";
+            const isActive = msg.id === currentMessageId ? "active" : "";
+            const preview = msg.text
+              ? msg.text.substring(0, 30)
+              : "テキストなし";
 
-            if (filteredMessages.length === 0) {
-                listEl.innerHTML = '<div class="no-detailed">メッセージがありません</div>';
-                return;
-            }
-
-            listEl.innerHTML = filteredMessages.map(msg => {
-                const hasDetailed = msg.text_ja_detailed ? 'has-detailed' : '';
-                const isActive = msg.id === currentMessageId ? 'active' : '';
-                const preview = msg.text ? msg.text.substring(0, 30) : 'テキストなし';
-
-                return `
+            return `
                     <div class="message-item ${hasDetailed} ${isActive}" onclick="showMessage('${msg.id}')">
                         <div class="message-item-header">
                             <span class="message-id">${msg.id}</span>
@@ -519,95 +685,274 @@
                         <div class="message-preview">${preview}</div>
                     </div>
                 `;
-            }).join('');
-        }
+          })
+          .join("");
+      }
 
-        // メッセージ詳細表示
-        function showMessage(messageId) {
-            currentMessageId = messageId;
-            const msg = messages.find(m => m.id === messageId);
+      // メッセージ詳細表示
+      function showMessage(messageId) {
+        currentMessageId = messageId;
+        const msg = messages.find((m) => m.id === messageId);
 
-            if (!msg) return;
+        if (!msg) return;
 
-            renderMessageList(); // active状態を更新
+        renderMessageList(); // active状態を更新
 
-            const contentEl = document.getElementById('content');
-            contentEl.className = 'content';
+        const contentEl = document.getElementById("content");
+        contentEl.className = "content";
 
-            let html = `
+        let html = `
                 <div class="message-detail">
                     <div class="detail-header">
                         <h2>${msg.id}</h2>
                         <div class="detail-meta">
                             <span><strong>言語:</strong> ${msg.lang}</span>
-                            <span><strong>話者:</strong> ${msg.speaker || 'N/A'}</span>
-                            ${msg.timestamp ? `<span><strong>日時:</strong> ${msg.timestamp}</span>` : ''}
-                            ${msg.confidence ? `<span><strong>信頼度:</strong> ${(msg.confidence * 100).toFixed(1)}%</span>` : ''}
+                            <span><strong>話者:</strong> ${
+                              msg.speaker || "N/A"
+                            }</span>
+                            ${
+                              msg.timestamp
+                                ? `<span><strong>日時:</strong> ${msg.timestamp}</span>`
+                                : ""
+                            }
+                            ${
+                              msg.confidence
+                                ? `<span><strong>信頼度:</strong> ${(
+                                    msg.confidence * 100
+                                  ).toFixed(1)}%</span>`
+                                : ""
+                            }
                         </div>
                     </div>
 
                     <div class="section">
                         <div class="section-title">原文</div>
-                        <div class="simple-translation">${escapeHtml(msg.text || 'テキストなし')}</div>
+                        <div class="simple-translation">${escapeHtml(
+                          msg.text || "テキストなし"
+                        )}</div>
                     </div>
             `;
 
-            if (msg.text_ja) {
-                html += `
+        if (msg.text_ja) {
+          html += `
                     <div class="section">
                         <div class="section-title">簡易翻訳</div>
-                        <div class="simple-translation">${escapeHtml(msg.text_ja)}</div>
+                        <div class="simple-translation">${escapeHtml(
+                          msg.text_ja
+                        )}</div>
                     </div>
                 `;
-            }
+        }
 
-            if (msg.text_ja_detailed) {
-                html += `
+        if (msg.text_ja_detailed) {
+          html += `
                     <div class="section">
-                        <div class="section-title">詳細翻訳（学習用）</div>
-                        <div class="detailed-translation">
-                            ${marked.parse(msg.text_ja_detailed)}
+                        <div class="section-title">詳細解説（学習モード）</div>
+                        <div class="detailed-translation" id="detailedContent">
+                            ${renderDetailedJSON(msg.text_ja_detailed)}
                         </div>
                     </div>
                 `;
-            } else {
-                html += `
+        } else {
+          html += `
                     <div class="section">
-                        <div class="section-title">詳細翻訳</div>
-                        <div class="no-detailed">詳細翻訳はありません</div>
+                        <div class="section-title">詳細解説</div>
+                        <div class="no-detailed">詳細解説はありません</div>
                     </div>
                 `;
-            }
-
-            html += '</div>';
-            contentEl.innerHTML = html;
         }
 
-        // HTMLエスケープ
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
+        html += "</div>";
+        contentEl.innerHTML = html;
+      }
+
+      // 詳細JSONのレンダリング
+      function renderDetailedJSON(dataStr) {
+        try {
+          // まずJSONとしてパースを試みる
+          const data =
+            typeof dataStr === "object" ? dataStr : JSON.parse(dataStr);
+
+          let html = "";
+
+          // 誤字修正
+          if (data.corrected_text) {
+            html += `
+                        <div class="correction-box">
+                            <span class="correction-label">⚠️ 誤字修正</span>
+                            <div style="font-size: 1.1rem; margin-bottom: 0.5rem;">
+                                <del style="color: #d73a49;">${escapeHtml(
+                                  data.original_text
+                                )}</del>
+                                <span style="margin: 0 0.5rem;">→</span>
+                                <strong style="color: #28a745;">${escapeHtml(
+                                  data.corrected_text
+                                )}</strong>
+                            </div>
+                            <div class="correction-reason" style="font-size: 0.9rem; color: #586069;">
+                                ${escapeHtml(data.typo_note)}
+                            </div>
+                        </div>
+                    `;
+          }
+
+          // 自然な日本語訳
+          html += `
+                    <h3>🎯 自然な日本語訳</h3>
+                    <div class="simple-translation" style="margin-bottom: 1.5rem; background: #f1f8ff; border-left: 4px solid #0366d6;">
+                        ${escapeHtml(data.natural_translation)}
+                    </div>
+                `;
+
+          // 単語解説
+          if (data.word_analysis && data.word_analysis.length > 0) {
+            html += `<h3>📚 単語・慣用句の解説</h3>`;
+            html += `<div class="word-card-container">`;
+            data.word_analysis.forEach((word) => {
+              html += `
+                            <div class="word-card">
+                                <div class="word-header">
+                                    <span class="word-main">${escapeHtml(
+                                      word.word
+                                    )}</span>
+                                    ${
+                                      word.hsk_level
+                                        ? `<span class="hsk-badge">HSK ${word.hsk_level}</span>`
+                                        : ""
+                                    }
+                                </div>
+                                <div class="pinyin">${escapeHtml(
+                                  word.pinyin
+                                )}</div>
+                                <div class="pos">${escapeHtml(
+                                  word.part_of_speech
+                                )}</div>
+                                <div class="meaning">${escapeHtml(
+                                  word.meaning
+                                )}</div>
+                                <div class="explanation">${escapeHtml(
+                                  word.explanation
+                                )}</div>
+                            </div>
+                        `;
+            });
+            html += `</div>`;
+          }
+
+          // ニュアンス分析
+          if (data.nuance_analysis) {
+            html += `<h3>分析 🧠 ニュアンスと背景</h3>`;
+            html += `
+                        <div class="nuance-grid">
+                            <div class="nuance-item">
+                                <span class="nuance-label">感情トーン</span>
+                                <div>${escapeHtml(
+                                  data.nuance_analysis.emotional_tone
+                                )}</div>
+                            </div>
+                            <div class="nuance-item">
+                                <span class="nuance-label">関係性</span>
+                                <div>${escapeHtml(
+                                  data.nuance_analysis.relationship
+                                )}</div>
+                            </div>
+                            <div class="nuance-item">
+                                <span class="nuance-label">文化的背景</span>
+                                <div>${escapeHtml(
+                                  data.nuance_analysis.cultural_background
+                                )}</div>
+                            </div>
+                            <div class="nuance-item">
+                                <span class="nuance-label">意図・期待</span>
+                                <div>${escapeHtml(
+                                  data.nuance_analysis.intention
+                                )}</div>
+                            </div>
+                        </div>
+                        <div class="nuance-item" style="margin-top: 0.5rem;">
+                            <span class="nuance-label">要約</span>
+                            <div>${escapeHtml(
+                              data.nuance_analysis.summary
+                            )}</div>
+                        </div>
+                    `;
+          }
+
+          // 返信案
+          if (data.reply_suggestions && data.reply_suggestions.length > 0) {
+            html += `<h3>💬 返信バリエーション</h3>`;
+            html += `<div class="reply-container">`;
+            data.reply_suggestions.forEach((suggestion) => {
+              html += `
+                            <div class="reply-card">
+                                <div class="reply-type">${escapeHtml(
+                                  suggestion.type
+                                )}</div>
+                                <div class="reply-content">
+                                    <div class="reply-text">
+                                        ${escapeHtml(suggestion.reply)}
+                                        <button class="copy-btn" onclick="copyText('${suggestion.reply.replace(
+                                          /'/g,
+                                          "\\'"
+                                        )}')">コピー</button>
+                                    </div>
+                                    <div class="reply-reason">${escapeHtml(
+                                      suggestion.reason
+                                    )}</div>
+                                </div>
+                            </div>
+                        `;
+            });
+            html += `</div>`;
+          }
+
+          return html;
+        } catch (e) {
+          console.error("JSON parse error, falling back to markdown:", e);
+          // JSONでない場合はマークダウンとして処理
+          return marked.parse(dataStr);
         }
+      }
 
-        // キーボードショートカット
-        document.addEventListener('keydown', function(e) {
-            if (filteredMessages.length === 0) return;
+      // テキストコピー
+      function copyText(text) {
+        navigator.clipboard
+          .writeText(text)
+          .then(() => {
+            alert("コピーしました！");
+          })
+          .catch((err) => {
+            console.error("コピーに失敗しました:", err);
+          });
+      }
 
-            const currentIndex = filteredMessages.findIndex(m => m.id === currentMessageId);
+      // HTMLエスケープ
+      function escapeHtml(text) {
+        const div = document.createElement("div");
+        div.textContent = text;
+        return div.innerHTML;
+      }
 
-            if (e.key === 'ArrowDown' || e.key === 'j') {
-                e.preventDefault();
-                if (currentIndex < filteredMessages.length - 1) {
-                    showMessage(filteredMessages[currentIndex + 1].id);
-                }
-            } else if (e.key === 'ArrowUp' || e.key === 'k') {
-                e.preventDefault();
-                if (currentIndex > 0) {
-                    showMessage(filteredMessages[currentIndex - 1].id);
-                }
-            }
-        });
+      // キーボードショートカット
+      document.addEventListener("keydown", function (e) {
+        if (filteredMessages.length === 0) return;
+
+        const currentIndex = filteredMessages.findIndex(
+          (m) => m.id === currentMessageId
+        );
+
+        if (e.key === "ArrowDown" || e.key === "j") {
+          e.preventDefault();
+          if (currentIndex < filteredMessages.length - 1) {
+            showMessage(filteredMessages[currentIndex + 1].id);
+          }
+        } else if (e.key === "ArrowUp" || e.key === "k") {
+          e.preventDefault();
+          if (currentIndex > 0) {
+            showMessage(filteredMessages[currentIndex - 1].id);
+          }
+        }
+      });
     </script>
-</body>
+  </body>
 </html>

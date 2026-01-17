@@ -480,6 +480,15 @@ python translate.py \
     --poll-interval 60 \
     --max-retries 1
 
+# use Gemini 3 flash
+python translate.py \
+    --input ./output/refined.jsonl \
+    --output ./output/translated.jsonl \
+    --backend gemini-batch \
+    --model gemini-3-flash-preview \
+    --batch-size 1000 \
+    --poll-interval 60
+
 # Use Batch API (50% OFF, Balance Focused)
 python translate.py \
     --input ./output/refined.jsonl \

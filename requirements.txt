@@ -13,5 +13,14 @@ numpy>=1.24.0
 # 進捗表示
 tqdm>=4.65.0
 
+# API backend
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+python-multipart>=0.0.9
+
+# HTTP client and env loader
+requests>=2.31.0
+python-dotenv>=1.0.1
+
 # オプション: 高速化
 # onnxruntime-gpu>=1.15.0  # ONNX推論エンジン（さらに高速化したい場合）

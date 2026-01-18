@@ -1,12 +1,13 @@
-import { useCallback, useState, DragEvent } from 'react';
+import { useCallback, useEffect, useState, DragEvent } from 'react';
 import {
   ReactFlow,
   Background,
   Controls,
   MiniMap,
-  useNodesState,
-  useEdgesState,
+  BackgroundVariant,
   addEdge,
+  applyNodeChanges,
+  applyEdgeChanges,
 } from '@xyflow/react';
 import type { Connection, Node, Edge, NodeTypes } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
@@ -21,6 +22,7 @@ import { TranslateNode } from './components/nodes/TranslateNode';
 import { ViewerNode } from './components/nodes/ViewerNode';
 import { useFlowStore } from './store/flowStore';
 import type { NodeData } from './types';
+import { executeAllNodes } from './utils/execution';
 
 const nodeTypes: NodeTypes = {
   input: InputNode,
@@ -97,29 +99,41 @@ const initialEdges: Edge[] = [
 ];
 
 function App() {
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
   const [showLogs, setShowLogs] = useState(false);
-  const { setNodes: setStoreNodes, setEdges: setStoreEdges, addLog } = useFlowStore();
+  const {
+    nodes,
+    edges,
+    setNodes,
+    setEdges,
+    updateNodeData,
+    updateNodeStatus,
+    updateNodeResult,
+    addLog,
+  } = useFlowStore();
 
-  // Sync nodes and edges with store
+  useEffect(() => {
+    if (nodes.length === 0) {
+      setNodes(initialNodes);
+    }
+    if (edges.length === 0) {
+      setEdges(initialEdges);
+    }
+  }, [nodes.length, edges.length, setNodes, setEdges]);
+
   const handleNodesChange = useCallback((changes: any) => {
-    onNodesChange(changes);
-    setStoreNodes(nodes);
-  }, [onNodesChange, setStoreNodes, nodes]);
+    setNodes(applyNodeChanges(changes, nodes));
+  }, [setNodes, nodes]);
 
   const handleEdgesChange = useCallback((changes: any) => {
-    onEdgesChange(changes);
-    setStoreEdges(edges);
-  }, [onEdgesChange, setStoreEdges, edges]);
+    setEdges(applyEdgeChanges(changes, edges));
+  }, [setEdges, edges]);
 
   const onConnect = useCallback(
     (connection: Connection) => {
       const newEdges = addEdge({ ...connection, animated: true }, edges);
       setEdges(newEdges);
-      setStoreEdges(newEdges);
     },
-    [edges, setEdges, setStoreEdges]
+    [edges, setEdges]
   );
 
   const onDrop = useCallback(
@@ -151,10 +165,9 @@ function App() {
         },
       };
 
-      setNodes((nds) => [...nds, newNode]);
-      setStoreNodes([...nodes, newNode]);
+      setNodes([...nodes, newNode]);
     },
-    [nodes, setNodes, setStoreNodes]
+    [nodes, setNodes]
   );
 
   const onDragOver = useCallback((event: DragEvent) => {
@@ -162,14 +175,29 @@ function App() {
     event.dataTransfer.dropEffect = 'move';
   }, []);
 
-  const handleRunAll = useCallback(() => {
-    addLog({
-      nodeId: 'system',
-      message: 'Run All clicked - Sequential execution not yet implemented',
-      level: 'info',
-    });
-    // TODO: Implement topological sort and sequential execution
-  }, [addLog]);
+  const handleRunAll = useCallback(async () => {
+    if (nodes.length === 0) {
+      addLog({
+        nodeId: 'system',
+        message: '実行するノードがありません',
+        level: 'warning',
+      });
+      return;
+    }
+
+    try {
+      await executeAllNodes(
+        nodes,
+        edges,
+        updateNodeStatus,
+        updateNodeResult,
+        updateNodeData,
+        addLog
+      );
+    } catch {
+      // Errors are already logged inside executeAllNodes.
+    }
+  }, [nodes, edges, updateNodeStatus, updateNodeResult, updateNodeData, addLog]);
 
   return (
     <div className="h-screen flex flex-col bg-dark-bg">
@@ -191,13 +219,13 @@ function App() {
             fitView
             className="bg-dark-bg"
           >
-            <Background color="#404040" gap={16} size={1} />
+            <Background color="#2a2a2a" gap={20} size={1} variant={BackgroundVariant.Dots} />
             <Controls className="bg-dark-node border-dark-border" />
             <MiniMap
               className="bg-dark-node border-dark-border"
               nodeColor={(node) => {
                 switch (node.data.status) {
-                  case 'success': return '#00ff88';
+                  case 'success': return '#00ffaa';
                   case 'error': return '#ff4444';
                   case 'running': return '#ffaa00';
                   default: return '#2d2d2d';

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { NodeProps } from '@xyflow/react';
 import { Eye, Download, Search } from 'lucide-react';
 import { BaseNode } from './BaseNode';
@@ -7,9 +7,10 @@ import { useFlowStore } from '../../store/flowStore';
 import { parseJsonlToMessages } from '../../utils/api';
 
 export function ViewerNode({ id, data }: NodeProps<ViewerNodeData>) {
-    const { nodes, edges, updateNodeData, updateNodeResult } = useFlowStore();
+    const { nodes, edges, updateNodeData, updateNodeResult, updateNodeStatus, addLog } = useFlowStore();
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [filteredMessages, setFilteredMessages] = useState<ChatMessage[]>([]);
+    const lastProcessedRef = useRef<string | null>(null);
 
     const getInputNode = useCallback(() => {
         const inputEdge = edges.find(e => e.target === id);
@@ -20,8 +21,9 @@ export function ViewerNode({ id, data }: NodeProps<ViewerNodeData>) {
     // Auto-update when input changes
     useEffect(() => {
         const inputNode = getInputNode();
-        if (inputNode?.data.status === 'success' && inputNode.data.result?.translatedJsonl) {
-            const parsed = parseJsonlToMessages(inputNode.data.result.translatedJsonl);
+        const translatedJsonl = inputNode?.data.result?.translatedJsonl;
+        if (inputNode?.data.status === 'success' && translatedJsonl && translatedJsonl !== lastProcessedRef.current) {
+            const parsed = parseJsonlToMessages(translatedJsonl);
             setMessages(parsed);
             setFilteredMessages(parsed);
 
@@ -32,8 +34,51 @@ export function ViewerNode({ id, data }: NodeProps<ViewerNodeData>) {
             };
 
             updateNodeResult(id, { messages: parsed, stats });
+            updateNodeStatus(id, 'success');
+            updateNodeData(id, { error: undefined });
+            lastProcessedRef.current = translatedJsonl;
         }
-    }, [getInputNode, id, updateNodeResult]);
+    }, [getInputNode, id, updateNodeResult, updateNodeStatus, updateNodeData]);
+
+    const handleExecute = useCallback(() => {
+        const inputNode = getInputNode();
+        if (!inputNode || inputNode.data.status !== 'success') {
+            updateNodeData(id, { error: 'Translate node must be executed successfully first' });
+            return;
+        }
+
+        const translatedJsonl = inputNode.data.result?.translatedJsonl;
+        if (!translatedJsonl) {
+            updateNodeData(id, { error: 'No translated data available' });
+            return;
+        }
+
+        try {
+            updateNodeStatus(id, 'running');
+            updateNodeData(id, { error: undefined });
+            addLog({ nodeId: id, message: 'Updating viewer data...', level: 'info' });
+
+            const parsed = parseJsonlToMessages(translatedJsonl);
+            setMessages(parsed);
+            setFilteredMessages(parsed);
+
+            const stats = {
+                totalMessages: parsed.length,
+                userAMessages: parsed.filter(m => m.speaker === 'user_a').length,
+                userBMessages: parsed.filter(m => m.speaker === 'user_b').length,
+            };
+
+            updateNodeResult(id, { messages: parsed, stats });
+            updateNodeStatus(id, 'success');
+            addLog({ nodeId: id, message: 'Viewer updated successfully', level: 'info' });
+            lastProcessedRef.current = translatedJsonl;
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Failed to parse translated data';
+            updateNodeStatus(id, 'error');
+            updateNodeData(id, { error: message });
+            addLog({ nodeId: id, message, level: 'error' });
+        }
+    }, [addLog, getInputNode, id, updateNodeData, updateNodeResult, updateNodeStatus]);
 
     const handleSearch = useCallback((query: string) => {
         updateNodeData(id, { config: { searchQuery: query } });
@@ -63,6 +108,9 @@ export function ViewerNode({ id, data }: NodeProps<ViewerNodeData>) {
         URL.revokeObjectURL(url);
     }, [getInputNode]);
 
+    const inputNode = getInputNode();
+    const canExecute = inputNode?.data.status === 'success';
+
     return (
         <BaseNode
             id={id}
@@ -72,7 +120,8 @@ export function ViewerNode({ id, data }: NodeProps<ViewerNodeData>) {
             error={data.error}
             logs={data.logs}
             hasOutput={false}
-            canExecute={false}
+            onExecute={handleExecute}
+            canExecute={canExecute}
         >
             {/* Search Bar */}
             <div className="relative">

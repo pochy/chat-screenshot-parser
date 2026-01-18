@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import { ReactNode, useState } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { Play, ChevronDown, ChevronUp, AlertCircle } from 'lucide-react';
 import type { NodeStatus } from '../../types';
@@ -45,9 +45,11 @@ export function BaseNode({
     children,
 }: BaseNodeProps) {
     const [expanded, setExpanded] = useState(true);
+    const isExecutable = status === 'idle' && canExecute;
+    const borderClass = isExecutable ? 'border-dark-accent' : statusBorders[status];
 
     return (
-        <div className={`bg-dark-node border-2 ${statusBorders[status]} rounded-lg shadow-xl min-w-[320px] max-w-[400px]`}>
+        <div className={`bg-dark-node border-2 ${borderClass} rounded-lg shadow-xl min-w-[320px] max-w-[400px]`}>
             {/* Input Handle */}
             {hasInput && (
                 <Handle
@@ -123,5 +125,3 @@ export function BaseNode({
         </div>
     );
 }
-
-import { useState } from 'react';

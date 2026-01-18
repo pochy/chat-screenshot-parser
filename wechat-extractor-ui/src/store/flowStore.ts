@@ -54,14 +54,38 @@ export const useFlowStore = create<FlowState>((set, get) => ({
         ),
     })),
 
-    addLog: (log) => set((state) => ({
-        logs: [
-            ...state.logs,
-            { ...log, timestamp: new Date().toISOString() },
-        ],
-    })),
+    addLog: (log) => set((state) => {
+        const entry = { ...log, timestamp: new Date().toISOString() };
+        const nodes = log.nodeId === 'system'
+            ? state.nodes
+            : state.nodes.map((node) =>
+                node.id === log.nodeId
+                    ? {
+                        ...node,
+                        data: {
+                            ...node.data,
+                            logs: [...(node.data.logs || []), entry.message].slice(-5),
+                        },
+                    }
+                    : node
+            );
 
-    clearLogs: () => set({ logs: [] }),
+        return {
+            logs: [...state.logs, entry],
+            nodes,
+        };
+    }),
+
+    clearLogs: () => set((state) => ({
+        logs: [],
+        nodes: state.nodes.map((node) => ({
+            ...node,
+            data: {
+                ...node.data,
+                logs: [],
+            },
+        })),
+    })),
 
     setFlowName: (name) => set({ flowName: name }),
 

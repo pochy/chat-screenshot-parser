@@ -90,6 +90,25 @@ export function InputNode({ id, data }: NodeProps<InputNodeData>) {
                 />
             </div>
 
+            {/* Upload Actions */}
+            <div className="flex gap-2">
+                <button
+                    type="button"
+                    onClick={() => document.getElementById(`file-input-${id}`)?.click()}
+                    className="flex-1 bg-dark-bg hover:bg-dark-hover border border-dark-border rounded py-2 text-sm text-white transition-colors"
+                >
+                    Select Images
+                </button>
+                <button
+                    type="button"
+                    onClick={handleExecute}
+                    disabled={images.length === 0 || data.status === 'running'}
+                    className="flex-1 bg-dark-accent hover:bg-green-400 disabled:bg-gray-600 disabled:cursor-not-allowed rounded py-2 text-sm text-dark-bg font-medium transition-colors"
+                >
+                    Upload
+                </button>
+            </div>
+
             {/* Thumbnail Grid */}
             {images.length > 0 && (
                 <div className="grid grid-cols-3 gap-2 max-h-48 overflow-y-auto">

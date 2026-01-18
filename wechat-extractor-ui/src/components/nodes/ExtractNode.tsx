@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { NodeProps } from '@xyflow/react';
 import { Scan } from 'lucide-react';
 import { BaseNode } from './BaseNode';
@@ -8,6 +8,7 @@ import { extractText } from '../../utils/api';
 
 export function ExtractNode({ id, data }: NodeProps<ExtractNodeData>) {
     const { nodes, updateNodeData, updateNodeStatus, updateNodeResult, addLog } = useFlowStore();
+    const [progress, setProgress] = useState(0);
 
     const getInputNode = useCallback(() => {
         const edges = useFlowStore.getState().edges;
@@ -55,8 +56,27 @@ export function ExtractNode({ id, data }: NodeProps<ExtractNodeData>) {
         });
     }, [id, data.config, updateNodeData]);
 
+    useEffect(() => {
+        if (data.status === 'running') {
+            setProgress(10);
+            const interval = setInterval(() => {
+                setProgress((prev) => (prev < 90 ? prev + 5 : prev));
+            }, 300);
+            return () => clearInterval(interval);
+        }
+
+        if (data.status === 'success') {
+            setProgress(100);
+        } else if (data.status === 'error') {
+            setProgress(0);
+        }
+    }, [data.status]);
+
     const inputNode = getInputNode();
     const canExecute = inputNode?.data.status === 'success';
+    const previewJsonl = data.result?.rawJsonl
+        ? data.result.rawJsonl.split('\n').slice(0, 3).join('\n')
+        : '';
 
     return (
         <BaseNode
@@ -84,6 +104,19 @@ export function ExtractNode({ id, data }: NodeProps<ExtractNodeData>) {
                 </button>
             </div>
 
+            {/* Progress Bar */}
+            {data.status === 'running' && (
+                <div className="space-y-1">
+                    <div className="text-xs text-gray-400">Progress</div>
+                    <div className="h-2 bg-dark-bg rounded-full overflow-hidden">
+                        <div
+                            className="h-full bg-dark-accent transition-all"
+                            style={{ width: `${progress}%` }}
+                        />
+                    </div>
+                </div>
+            )}
+
             {/* Result Preview */}
             {data.result && (
                 <div className="bg-dark-bg rounded p-2 space-y-1">
@@ -91,6 +124,11 @@ export function ExtractNode({ id, data }: NodeProps<ExtractNodeData>) {
                     <div className="text-sm text-green-400">
                         ✓ {data.result.messageCount} messages extracted
                     </div>
+                    {previewJsonl && (
+                        <pre className="text-xs text-gray-300 font-mono whitespace-pre-wrap max-h-24 overflow-y-auto border-t border-dark-border pt-2">
+                            {previewJsonl}
+                        </pre>
+                    )}
                 </div>
             )}
         </BaseNode>

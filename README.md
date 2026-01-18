@@ -59,6 +59,7 @@ source venv/bin/activate
 **Important**: PaddleOCR v3.x has compatibility issues, so please use **v2.9.1**.
 
 ```bash
+# Install PaddlePaddle first (GPU or CPU)
 # Install PaddlePaddle GPU version
 # * Select appropriate URL according to CUDA version
 
@@ -71,11 +72,19 @@ pip install paddlepaddle-gpu -i https://www.paddlepaddle.org.cn/packages/stable/
 # For CUDA 12.6
 pip install paddlepaddle-gpu -i https://www.paddlepaddle.org.cn/packages/stable/cu126/
 
+# CPU-only / macOS (GPU wheels are not available)
+# 1) Comment out paddlepaddle-gpu in requirements.txt
+# 2) Uncomment paddlepaddle and install it
+# pip install paddlepaddle
+
 # PaddleOCR (Stable version)
 pip install "paddleocr==2.9.1"
 
 # Other dependencies
 pip install opencv-python numpy tqdm
+
+# Install API + other deps (after PaddlePaddle is installed)
+pip install -r requirements.txt
 ```
 
 ### 4. Verification
@@ -83,6 +92,37 @@ pip install opencv-python numpy tqdm
 ```bash
 python -c "import paddle; paddle.utils.run_check()"
 python -c "from paddleocr import PaddleOCR; print('OK')"
+```
+
+## FastAPI Backend (for UI)
+
+The UI expects a FastAPI server with the following endpoints:
+
+- `POST /upload-images` (multipart form, field name `files`)
+- `POST /extract`
+- `POST /process` (alias: `POST /dedupe-refine`)
+- `POST /translate`
+
+### Run server
+
+```bash
+uvicorn backend.main:app --reload
+```
+
+### Environment variables
+
+- `GOOGLE_API_KEY` (required for `gemini` / `gemini-batch`)
+- `WECHAT_CORS_ORIGINS` (comma-separated origins, default: `http://localhost:5173`)
+- `WECHAT_API_DATA_DIR` (default: `./output`)
+- `WECHAT_UPLOAD_DIR` (default: `./output/uploads`)
+- `WECHAT_ALLOW_EXTERNAL_PATHS` (`true` to allow absolute paths outside the repo)
+
+### Connect the UI
+
+Set `VITE_API_URL` in `wechat-extractor-ui/.env`:
+
+```
+VITE_API_URL=http://localhost:8000
 ```
 
 ## Usage

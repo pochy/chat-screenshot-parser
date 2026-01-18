@@ -1,15 +1,13 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
 :root {
-  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  font-family: "Space Grotesk", "SF Pro Text", "Segoe UI", system-ui, sans-serif;
   line-height: 1.5;
   font-weight: 400;
 
   color-scheme: dark;
   color: #e0e0e0;
-  background-color: #1e1e1e;
+  background-color: #0b0f14;
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -27,6 +25,9 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  background: radial-gradient(1200px 800px at 10% 10%, rgba(15, 23, 42, 0.6), transparent 60%),
+    radial-gradient(1000px 700px at 90% 0%, rgba(6, 78, 59, 0.35), transparent 55%),
+    #0b0f14;
 }
 
 #root {
@@ -40,12 +41,12 @@ body {
 }
 
 .react-flow__node.selected {
-  box-shadow: 0 0 0 2px #00ffaa;
+  box-shadow: 0 0 0 2px #23f5a4, 0 0 0 6px rgba(35, 245, 164, 0.12);
 }
 
 .react-flow__edge-path {
-  stroke: #00ffaa;
-  stroke-width: 2;
+  stroke: #6ee7b7;
+  stroke-width: 2.5;
 }
 
 .react-flow__edge.selected .react-flow__edge-path {
@@ -55,6 +56,9 @@ body {
 .react-flow__handle {
   width: 12px;
   height: 12px;
+  border: 2px solid #0b0f14;
+  background: #23f5a4;
+  box-shadow: 0 0 8px rgba(35, 245, 164, 0.45);
 }
 
 /* Custom scrollbar */
@@ -64,16 +68,16 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: #1e1e1e;
+  background: #0b0f14;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #404040;
+  background: #1f2a3a;
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #555;
+  background: #2b384c;
 }
 
 /* Animations */
@@ -99,7 +103,7 @@ input[type="range"] {
 }
 
 input[type="range"]::-webkit-slider-track {
-  background: #404040;
+  background: #1f2a3a;
   height: 4px;
   border-radius: 2px;
 }
@@ -107,7 +111,7 @@ input[type="range"]::-webkit-slider-track {
 input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  background: #00ffaa;
+  background: #a78bfa;
   height: 16px;
   width: 16px;
   border-radius: 50%;
@@ -115,13 +119,13 @@ input[type="range"]::-webkit-slider-thumb {
 }
 
 input[type="range"]::-moz-range-track {
-  background: #404040;
+  background: #1f2a3a;
   height: 4px;
   border-radius: 2px;
 }
 
 input[type="range"]::-moz-range-thumb {
-  background: #00ffaa;
+  background: #a78bfa;
   height: 16px;
   width: 16px;
   border-radius: 50%;
